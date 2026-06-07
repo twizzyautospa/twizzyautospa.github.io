@@ -192,8 +192,6 @@ browser versions.
 
 ## License
 
-Released under the [MIT License](LICENSE).
-
 The Twizzy Auto Spa name, logo, branding, and photography are property of Twizzy
 Auto Spa and are **not** covered by the MIT license.
 
