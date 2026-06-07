@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Twizzy Auto Spa — Mobile Detailing & Ceramic Coatings</title>
+    <meta
+      name="description"
+      content="Premium mobile detailing, paint correction, and ceramic coatings. Book Twizzy Auto Spa for a showroom finish at your driveway."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              display: ["Outfit", "system-ui", "sans-serif"],
+              body: ["Outfit", "system-ui", "sans-serif"],
+            },
+            colors: {
+              brand: {
+                50: "#fff1f1",
+                100: "#ffe4e4",
+                200: "#fecaca",
+                300: "#fca5a5",
+                400: "#f87171",
+                500: "#ef4444",
+                600: "#dc2626",
+                700: "#b91c1c",
+                800: "#991b1b",
+                900: "#7f1d1d",
+              },
+              ink: "#0a0a0a",
+              paper: "#0b0b0b",
+              grayline: "#1f1f1f",
+              gold: "#f4d35e",
+            },
+            boxShadow: {
+              glow: "0 0 0 1px rgba(255,255,255,.06), 0 10px 40px rgba(0,0,0,.45)",
+            },
+            backgroundImage: {
+              grid: "radial-gradient(circle at 1px 1px, rgba(255,255,255,.06) 1px, transparent 0)",
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      html {
+        scroll-behavior: smooth;
+      }
+      .reveal {
+        opacity: 0;
+        transform: translateY(10px);
+        transition: opacity 0.6s ease, transform 0.6s ease;
+      }
+      .reveal.in {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .carousel-track {
+        display: flex;
+        transition: transform 0.4s ease;
+      }
+      .carousel-track img {
+        min-width: 100%;
+        object-fit: cover;
+      }
+      .ceramic-toggle {
+        cursor: pointer;
+      }
+      .ceramic-details {
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+        transition: max-height 0.5s ease, opacity 0.4s ease;
+      }
+      .ceramic-details.open {
+        max-height: 1600px;
+        opacity: 1;
+      }
+      .chevron {
+        transition: transform 0.3s ease;
+      }
+    </style>
+  </head>
+  <body class="bg-paper text-white font-body selection:bg-brand-400/30">
+    <!-- Top Bar -->
+    <div
+      class="bg-ink/70 backdrop-blur supports-[backdrop-filter]:backdrop-blur border-b border-grayline text-sm"
+    >
+      <div
+        class="max-w-7xl mx-auto flex items-center justify-between px-4 py-2"
+      >
+        <p class="text-white/70">
+          Mobile Detailing • Paint Correction • Ceramic Coatings
+        </p>
+        <a
+          href="tel:+16478830113"
+          class="inline-flex items-center gap-2 text-white/80 hover:text-white"
+          >📞 <span>(647)-883-0113</span></a
+        >
+      </div>
+    </div>
+
+    <!-- Header -->
+    <header
+      class="sticky top-0 z-50 bg-ink/70 border-b border-grayline backdrop-blur supports-[backdrop-filter]:backdrop-blur"
+    >
+      <div class="max-w-7xl mx-auto px-4">
+        <div class="flex items-center justify-between h-16">
+          <a href="#" class="flex items-center gap-3 group">
+            <img
+              id="logo"
+              src="https://i.ibb.co/ynGHxSJc/3512febe-a921-4c61-a131-81433461a367-removebg-preview.png"
+              alt="Twizzy Auto Spa"
+              class="h-10 w-auto drop-shadow"
+              style="object-fit: cover; width: 120px; height: 120px"
+            />
+          </a>
+          <nav class="hidden md:flex items-center gap-8 text-white/80">
+            <a href="#services" class="hover:text-white">Services</a>
+            <a href="#ceramic" class="hover:text-white">Ceramic Coating</a>
+            <a href="#gallery" class="hover:text-white">Gallery</a>
+            <a href="#reviews" class="hover:text-white">Reviews</a>
+            <a href="#contact" class="hover:text-white">Contact</a>
+            <a
+              href="https://twizzyautospa.setmore.com/shayan"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="ml-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold shadow-glow"
+              >Book Now</a
+            >
+          </nav>
+          <button
+            id="menuBtn"
+            class="md:hidden inline-flex items-center justify-center h-10 w-10 rounded-lg border border-white/10"
+          >
+            ☰
+          </button>
+        </div>
+      </div>
+      <!-- Mobile Menu -->
+      <div id="mobileMenu" class="md:hidden hidden border-t border-grayline">
+        <div class="px-4 py-4 space-y-3 bg-ink/80">
+          <a href="#services" class="block">Services</a>
+          <a href="#ceramic" class="block">Ceramic Coating</a>
+          <a href="#gallery" class="block">Gallery</a>
+          <a href="#reviews" class="block">Reviews</a>
+          <a href="#contact" class="block">Contact</a>
+          <a
+            href="https://twizzyautospa.setmore.com/shayan"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="block px-4 py-2 rounded-xl bg-brand-600 text-white font-semibold w-max"
+            >Book Now</a
+          >
+        </div>
+      </div>
+    </header>
+
+    <!-- Hero -->
+    <section class="relative isolate overflow-hidden">
+      <div
+        class="absolute inset-0 opacity-[.08] bg-grid bg-[length:22px_22px]"
+      ></div>
+      <div
+        class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(239,68,68,.18),transparent_60%)]"
+      ></div>
+      <div
+        class="max-w-7xl mx-auto px-4 pt-16 pb-24 md:pt-24 md:pb-32 relative"
+      >
+        <div class="grid md:grid-cols-2 gap-10 items-center">
+          <div class="reveal in">
+            <div
+              class="inline-flex items-center gap-2 text-xs tracking-widest uppercase text-brand-300/90 mb-4"
+            >
+              Premium Mobile Detailing
+            </div>
+            <h1
+              class="font-display text-4xl md:text-6xl font-extrabold leading-[1.05]"
+            >
+              Showroom shine, <span class="text-brand-400">delivered</span> to
+              your driveway.
+            </h1>
+            <p class="mt-5 text-white/70 text-lg md:text-xl max-w-prose">
+              We restore, protect and maintain your vehicle with paint-safe
+              techniques, professional-grade products, and meticulous care.
+            </p>
+            <div class="mt-8 flex flex-wrap gap-3">
+              <a
+                href="https://twizzyautospa.setmore.com/shayan"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold shadow-glow"
+                >Book Now</a
+              >
+              <a
+                href="#services"
+                class="px-6 py-3 rounded-xl border border-white/10 hover:border-white/20"
+                >Explore Services</a
+              >
+            </div>
+            <div class="mt-6 flex items-center gap-4 text-white/60 text-sm">
+              <span>🌟 5.0 average rating</span>
+              <span>•</span>
+              <span>Fully insured</span>
+            </div>
+          </div>
+          <div class="relative">
+            <div
+              class="aspect-[4/3] rounded-2xl overflow-hidden border border-white/10 shadow-glow"
+            >
+              <img
+                src="assets/porsche.jpeg"
+                alt="Detailing in progress"
+                class="h-full w-full object-cover"
+              />
+            </div>
+            <div class="absolute -bottom-6 -left-6 hidden md:block">
+              <div
+                class="px-4 py-3 rounded-xl bg-white/5 border border-white/10 backdrop-blur shadow-glow"
+              >
+                <p class="text-sm text-white/80">
+                  Ceramic coating upgrades available
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Trust Bar -->
+    <section class="border-t border-b border-grayline bg-ink/60">
+      <div
+        class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-2 md:grid-cols-4 gap-6 text-white/70 text-sm"
+      >
+        <div class="flex items-center gap-2">⭐ 100+ Five-Star Reviews</div>
+        <div class="flex items-center gap-2">
+          🛡️ Safe, Professional Techniques
+        </div>
+        <div class="flex items-center gap-2">✨ Showroom-Quality Results</div>
+        <div class="flex items-center gap-2">
+          🚐 Fully Mobile — We Come to You
+        </div>
+      </div>
+    </section>
+
+    <!-- Services / Detailing Packages -->
+    <section id="services" class="max-w-7xl mx-auto px-4 py-20">
+      <div class="reveal text-center max-w-3xl mx-auto">
+        <h2 class="font-display text-3xl md:text-5xl font-bold">
+          Detailing packages
+        </h2>
+        <p class="mt-5 text-white/70 leading-relaxed">
+          Our detailing packages bring professional, showroom-quality results
+          directly to your driveway — eliminating the hassle of shop drop-offs,
+          rides, and waiting. We combine the convenience of mobile service with
+          the standards of a high-end detailing shop, using premium, paint-safe
+          products to deliver a flawless finish. Enjoy a showroom-ready vehicle
+          from the comfort of your own home — effortless, refined, and done
+          right.
+        </p>
+      </div>
+      <div class="mt-10 grid md:grid-cols-3 gap-6 items-stretch">
+        <!-- Factory Reset -->
+        <div
+          class="reveal rounded-2xl border border-white/10 bg-white/5 p-6 flex flex-col shadow-glow"
+        >
+          <h3 class="font-display text-xl font-semibold">Factory Reset</h3>
+          <div class="mt-2 flex items-center gap-4">
+            <span class="text-white/90 font-semibold">Sedan — $165</span>
+            <span class="text-white/60">|</span>
+            <span class="text-white/90 font-semibold">SUV — $185</span>
+          </div>
+          <ul class="mt-5 space-y-2 text-white/70 text-sm flex-1">
+            <li>• Full Interior Vacuum</li>
+            <li>• Full Interior Spray N Wipe</li>
+            <li>• Glass Cleaning</li>
+            <li>• Exterior Hand Wash N Dry</li>
+            <li>• Mats Cleaned</li>
+            <li>• Tire Shine</li>
+          </ul>
+          <a
+            href="https://twizzyautospa.setmore.com/shayan"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="mt-6 inline-flex justify-center px-4 py-2 rounded-xl bg-brand-600 text-white font-semibold hover:bg-brand-700"
+            >Book Factory Reset</a
+          >
+        </div>
+        <!-- Showroom Ready -->
+        <div
+          class="reveal rounded-2xl border border-brand-500/30 bg-brand-600/10 p-6 flex flex-col shadow-glow"
+        >
+          <div class="flex items-center justify-between">
+            <h3 class="font-display text-xl font-semibold">Showroom Ready</h3>
+            <span
+              class="text-[10px] uppercase tracking-widest bg-brand-600 text-white px-2 py-0.5 rounded-full"
+              >Popular</span
+            >
+          </div>
+          <div class="mt-2 flex items-center gap-4">
+            <span class="text-white/90 font-semibold">Sedan — $250</span>
+            <span class="text-white/60">|</span>
+            <span class="text-white/90 font-semibold">SUV — $275</span>
+          </div>
+          <ul class="mt-5 space-y-2 text-white/70 text-sm flex-1">
+            <li>• Full Interior Vacuum</li>
+            <li>• Full Interior Spray N Wipe</li>
+            <li>• Glass Cleaning</li>
+            <li>• Exterior Hand Wash N Dry</li>
+            <li>• Mats Cleaned</li>
+            <li>• Tire Shine</li>
+            <li
+              class="!mt-4 pt-3 border-t border-white/10 text-brand-300/80 text-xs uppercase tracking-wider font-medium"
+            >
+              Plus
+            </li>
+            <li>• Steam Cleaning</li>
+            <li>• Leather Conditioning</li>
+            <li>• Carpet Shampoo + Extraction</li>
+            <li>• Interior Shine</li>
+            <li>• Exterior Hand Wax</li>
+          </ul>
+          <a
+            href="https://twizzyautospa.setmore.com/shayan"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="mt-6 inline-flex justify-center px-4 py-2 rounded-xl bg-brand-600 text-white font-semibold hover:bg-brand-700"
+            >Book Showroom Ready</a
+          >
+        </div>
+        <!-- Platinum Protection -->
+        <div
+          class="reveal rounded-2xl border border-gold/30 bg-gold/10 p-6 flex flex-col shadow-glow"
+        >
+          <div class="flex items-center justify-between">
+            <h3 class="font-display text-xl font-semibold">
+              Platinum Protection
+            </h3>
+            <span
+              class="text-[10px] uppercase tracking-widest bg-gold text-ink px-2 py-0.5 rounded-full font-semibold"
+              >Top Tier</span
+            >
+          </div>
+          <div class="mt-2 flex items-center gap-4">
+            <span class="text-white/90 font-semibold">Sedan — $325</span>
+            <span class="text-white/60">|</span>
+            <span class="text-white/90 font-semibold">SUV — $350</span>
+          </div>
+          <ul class="mt-5 space-y-2 text-white/70 text-sm flex-1">
+            <li>• Full Interior Vacuum</li>
+            <li>• Full Interior Spray N Wipe</li>
+            <li>• Glass Cleaning</li>
+            <li>• Exterior Hand Wash N Dry</li>
+            <li>• Mats Cleaned</li>
+            <li>• Tire Shine</li>
+            <li>• Steam Cleaning</li>
+            <li>• Leather Conditioning</li>
+            <li>• Carpet Shampoo + Extraction</li>
+            <li>• Interior Shine</li>
+            <li>• Exterior Hand Wax</li>
+            <li
+              class="!mt-4 pt-3 border-t border-white/10 text-gold/90 text-xs uppercase tracking-wider font-medium"
+            >
+              Plus
+            </li>
+            <li>• Engine Bay Full Detail</li>
+            <li>• Paint Decontamination</li>
+            <li>• Ceramic Sealant Spray</li>
+          </ul>
+          <a
+            href="https://twizzyautospa.setmore.com/shayan"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="mt-6 inline-flex justify-center px-4 py-2 rounded-xl bg-gold text-ink font-semibold hover:opacity-90"
+            >Book Platinum Protection</a
+          >
+        </div>
+      </div>
+      <p class="reveal mt-8 text-center text-white/50 text-sm">
+        ⚡ Access to water and electricity is required for all mobile services.
+      </p>
+    </section>
+
+    <!-- Paint Correction & Ceramic Coating -->
+    <section
+      id="ceramic"
+      class="relative isolate overflow-hidden border-t border-grayline"
+    >
+      <div
+        class="absolute inset-0 opacity-[.06] bg-grid bg-[length:22px_22px]"
+      ></div>
+      <div
+        class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(244,211,94,.10),transparent_60%)]"
+      ></div>
+      <div class="max-w-7xl mx-auto px-4 py-20 relative">
+        <div class="reveal text-center max-w-3xl mx-auto">
+          <div
+            class="inline-flex items-center gap-2 text-xs tracking-widest uppercase text-gold/90 mb-4"
+          >
+            Premium Protection
+          </div>
+          <h2 class="font-display text-3xl md:text-5xl font-bold">
+            Paint Correction &amp; Ceramic Coating
+          </h2>
+          <p class="mt-5 text-white/70 leading-relaxed">
+            True protection starts with the paint. Paint correction removes
+            years of swirl marks, scratches, and oxidation to bring back a deep,
+            mirror-like finish — then ceramic coating seals it in with a
+            durable, hydrophobic layer that guards against UV rays, road grime,
+            and water spotting. Together they deliver lasting protection,
+            showroom-level gloss, and longevity that ordinary waxes simply can't
+            match.
+          </p>
+        </div>
+
+        <!-- Benefits -->
+        <div class="mt-10 grid sm:grid-cols-3 gap-4">
+          <div
+            class="reveal rounded-2xl border border-white/10 bg-white/5 p-6 text-center"
+          >
+            <div class="text-2xl">🛡️</div>
+            <h3 class="mt-2 font-display text-lg font-semibold">Protection</h3>
+            <p class="mt-2 text-white/60 text-sm">
+              A hard, hydrophobic barrier shields your paint from UV rays, road
+              grime, contaminants, and minor scratches.
+            </p>
+          </div>
+          <div
+            class="reveal rounded-2xl border border-white/10 bg-white/5 p-6 text-center"
+          >
+            <div class="text-2xl">✨</div>
+            <h3 class="mt-2 font-display text-lg font-semibold">Gloss</h3>
+            <p class="mt-2 text-white/60 text-sm">
+              Multi-stage correction restores depth, clarity, and color richness
+              for a true mirror finish.
+            </p>
+          </div>
+          <div
+            class="reveal rounded-2xl border border-white/10 bg-white/5 p-6 text-center"
+          >
+            <div class="text-2xl">⏳</div>
+            <h3 class="mt-2 font-display text-lg font-semibold">Longevity</h3>
+            <p class="mt-2 text-white/60 text-sm">
+              Years of durable protection that keeps your vehicle looking
+              cleaner and newer for longer.
+            </p>
+          </div>
+        </div>
+
+        <!-- Packages (clickable / expandable) -->
+        <div class="mt-8 grid md:grid-cols-2 gap-6 items-start">
+          <!-- Ceramic Coating -->
+          <div
+            class="ceramic-card reveal rounded-2xl border border-gold/30 bg-gold/5 shadow-glow overflow-hidden"
+          >
+            <button
+              type="button"
+              class="ceramic-toggle w-full text-left p-6"
+              aria-expanded="false"
+            >
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <h3 class="font-display text-2xl font-semibold">
+                    Ceramic Coating
+                  </h3>
+                  <p class="text-gold/90 mt-1 text-sm">
+                    The ultimate gloss &amp; protection
+                  </p>
+                </div>
+                <span
+                  class="chevron shrink-0 mt-1 text-gold text-xl leading-none"
+                  >▾</span
+                >
+              </div>
+              <ul class="mt-4 space-y-2 text-white/70 text-sm">
+                <li>
+                  • Multi-stage paint correction &amp; paint decontamination for
+                  a flawless surface
+                </li>
+                <li>
+                  • IGL Certified 3–5 year ceramic coating for long-lasting
+                  protection
+                </li>
+                <li>
+                  • Full-surface coverage: paint, wheels, glass &amp; interior
+                  trim
+                </li>
+                <li>
+                  • Enhances gloss, depth, and color clarity to showroom
+                  standards
+                </li>
+                <li>
+                  • Protects against UV, contaminants, minor scratches &amp;
+                  water spotting
+                </li>
+                <li>
+                  • Reduces maintenance while keeping your vehicle pristine
+                </li>
+              </ul>
+              <div class="mt-4 flex items-center justify-between">
+                <span class="font-semibold text-gold">Custom quote</span>
+                <span
+                  class="text-white/40 text-xs uppercase tracking-wider toggle-hint"
+                  >Tap to read more</span
+                >
+              </div>
+            </button>
+            <div class="ceramic-details px-6">
+              <div
+                class="pt-2 pb-6 border-t border-white/10 space-y-4 text-white/70 text-sm leading-relaxed"
+              >
+                <p>
+                  Ceramic coating provides long-lasting protection while
+                  enhancing your vehicle's gloss and depth. It forms a durable,
+                  hydrophobic layer over your paint, helping repel water, dirt,
+                  UV rays, and road grime — making your car easier to maintain
+                  and keeping it looking cleaner for longer.
+                </p>
+                <p>
+                  Every application starts with proper preparation. We begin
+                  with a full exterior wash and paint decontamination to remove
+                  embedded contaminants. This is followed by a multi-stage paint
+                  correction to eliminate swirl marks and imperfections,
+                  refining the paint to a flawless finish. After a detailed
+                  panel prep, the ceramic coating is applied for maximum bonding
+                  and durability.
+                </p>
+                <p>
+                  We offer full-vehicle protection, including paint, wheels,
+                  glass, and interior surfaces — helping reduce buildup, improve
+                  visibility, and protect against everyday wear.
+                </p>
+                <p>
+                  Ceramic coating isn't just about shine — it's about preserving
+                  your vehicle and keeping it looking its best long-term.
+                </p>
+                <a
+                  href="https://twizzyautospa.setmore.com/shayan"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="mt-2 inline-flex justify-center px-5 py-2.5 rounded-xl bg-gold text-ink font-semibold hover:opacity-90"
+                  >Get a Free Ceramic Quote</a
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- Paint Correction -->
+          <div
+            class="ceramic-card reveal rounded-2xl border border-brand-500/30 bg-brand-600/5 shadow-glow overflow-hidden"
+          >
+            <button
+              type="button"
+              class="ceramic-toggle w-full text-left p-6"
+              aria-expanded="false"
+            >
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <h3 class="font-display text-2xl font-semibold">
+                    Paint Correction
+                  </h3>
+                  <p class="text-brand-300/90 mt-1 text-sm">
+                    The ultimate gloss &amp; defect removal
+                  </p>
+                </div>
+                <span
+                  class="chevron shrink-0 mt-1 text-brand-400 text-xl leading-none"
+                  >▾</span
+                >
+              </div>
+              <ul class="mt-4 space-y-2 text-white/70 text-sm">
+                <li>
+                  • Paint decontamination to remove embedded contaminants and
+                  prep the surface
+                </li>
+                <li>
+                  • 1–3 stage machine polishing to eliminate swirl marks,
+                  scratches &amp; imperfections
+                </li>
+                <li>
+                  • Restores depth, clarity, and gloss for a true showroom-level
+                  finish
+                </li>
+                <li>
+                  • Enhances color richness and reflection across all painted
+                  surfaces
+                </li>
+                <li>
+                  • Safely refines paint using professional-grade techniques and
+                  products
+                </li>
+                <li>
+                  • Ideal prep for ceramic coating or as a standalone
+                  transformation
+                </li>
+              </ul>
+              <div class="mt-4 flex items-center justify-between">
+                <span class="font-semibold text-brand-300">Custom quote</span>
+                <span
+                  class="text-white/40 text-xs uppercase tracking-wider toggle-hint"
+                  >Tap to read more</span
+                >
+              </div>
+            </button>
+            <div class="ceramic-details px-6">
+              <div
+                class="pt-2 pb-6 border-t border-white/10 space-y-4 text-white/70 text-sm leading-relaxed"
+              >
+                <p>
+                  Paint correction restores your vehicle's finish by removing
+                  swirl marks, light scratches, oxidation, and other
+                  imperfections — bringing back depth, clarity, and a true
+                  gloss.
+                </p>
+                <p>
+                  Every service starts with a full exterior wash and paint
+                  decontamination to remove embedded contaminants. We then
+                  perform a multi-stage machine polish (between 1–3 steps,
+                  depending on the condition) to safely level defects and refine
+                  the paint to a flawless finish.
+                </p>
+                <p>
+                  The result is a dramatically improved appearance with a
+                  smooth, mirror-like finish. Paint correction is the foundation
+                  for achieving the best results before applying any protection
+                  like ceramic coating.
+                </p>
+                <a
+                  href="https://twizzyautospa.setmore.com/shayan"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="mt-2 inline-flex justify-center px-5 py-2.5 rounded-xl bg-brand-600 text-white font-semibold hover:bg-brand-700"
+                  >Get a Custom Quote</a
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ceramic Before / After visuals -->
+        <!--
+          IMAGES: drop your real photos at the paths below (same /assets convention
+          your site already uses). Recommended ~1200px wide. Until the files exist,
+          a labeled placeholder shows in their place.
+        -->
+        <div class="reveal mt-14">
+          <h3
+            class="font-display text-xl md:text-2xl font-semibold text-center"
+          >
+            Ceramic coating results
+          </h3>
+          <p class="text-center text-white/60 mt-2 text-sm">
+            Real before &amp; after work from our team.
+          </p>
+          <div class="mt-6 grid sm:grid-cols-2 gap-4">
+            <figure
+              class="relative aspect-[4/3] rounded-2xl overflow-hidden border border-white/10 bg-white/5"
+            >
+              <div
+                class="absolute inset-0 z-0 flex items-center justify-center text-center px-4"
+              >
+                <span class="text-white/30 text-sm"
+                  >Before photo<br /><span class="text-white/20 text-xs"
+                    >/assets/before.jpeg</span
+                  ></span
+                >
+              </div>
+              <img
+                src="assets/before.jpeg"
+                alt="Vehicle paint before ceramic coating"
+                onerror="this.style.display='none'"
+                class="relative z-10 h-full w-full object-cover"
+              />
+              <span
+                class="absolute z-20 top-3 left-3 text-[11px] uppercase tracking-widest bg-ink/80 border border-white/15 text-white/90 px-2.5 py-1 rounded-full"
+                >Before</span
+              >
+            </figure>
+            <figure
+              class="relative aspect-[4/3] rounded-2xl overflow-hidden border border-gold/30 bg-white/5"
+            >
+              <div
+                class="absolute inset-0 z-0 flex items-center justify-center text-center px-4"
+              >
+                <span class="text-white/30 text-sm"
+                  >After photo<br /><span class="text-white/20 text-xs"
+                    >/assets/after.jpeg</span
+                  ></span
+                >
+              </div>
+              <img
+                src="assets/after.jpeg"
+                alt="Vehicle paint after ceramic coating"
+                onerror="this.style.display='none'"
+                class="relative z-10 h-full w-full object-cover"
+              />
+              <span
+                class="absolute z-20 top-3 left-3 text-[11px] uppercase tracking-widest bg-gold text-ink font-semibold px-2.5 py-1 rounded-full"
+                >After</span
+              >
+            </figure>
+          </div>
+        </div>
+
+        <!-- IGL Certifications -->
+        <div class="reveal mt-12">
+          <h3
+            class="font-display text-xl md:text-2xl font-semibold text-center"
+          >
+            IGL Certified
+          </h3>
+          <p class="text-center text-white/60 mt-2 text-sm">
+            Both of our detailers are officially IGL Coatings certified.
+          </p>
+          <div class="mt-6 grid sm:grid-cols-2 gap-6 max-w-3xl mx-auto">
+            <figure class="rounded-2xl border border-white/10 bg-white/5 p-3">
+              <div
+                class="relative aspect-[4/3] rounded-xl overflow-hidden bg-ink/40"
+              >
+                <div
+                  class="absolute inset-0 z-0 flex items-center justify-center text-center px-4"
+                >
+                  <span class="text-white/30 text-sm"
+                    >Shayan — IGL certificate<br /><span
+                      class="text-white/20 text-xs"
+                      >/assets/igl-shayan.jpg</span
+                    ></span
+                  >
+                </div>
+                <img
+                  src="assets/igl-shayan.jpg"
+                  alt="Shayan — IGL Coatings certification"
+                  onerror="this.style.display='none'"
+                  class="relative z-10 h-full w-full object-contain p-2"
+                />
+              </div>
+              <figcaption
+                class="mt-3 text-center text-white/80 text-sm font-medium"
+              >
+                Shayan — IGL Certified
+              </figcaption>
+            </figure>
+            <figure class="rounded-2xl border border-white/10 bg-white/5 p-3">
+              <div
+                class="relative aspect-[4/3] rounded-xl overflow-hidden bg-ink/40"
+              >
+                <div
+                  class="absolute inset-0 z-0 flex items-center justify-center text-center px-4"
+                >
+                  <span class="text-white/30 text-sm"
+                    >Phoenix — IGL certificate<br /><span
+                      class="text-white/20 text-xs"
+                      >/assets/igl-phoenix.jpg</span
+                    ></span
+                  >
+                </div>
+                <img
+                  src="assets/igl-phoenix.jpg"
+                  alt="Phoenix — IGL Coatings certification"
+                  onerror="this.style.display='none'"
+                  class="relative z-10 h-full w-full object-contain p-2"
+                />
+              </div>
+              <figcaption
+                class="mt-3 text-center text-white/80 text-sm font-medium"
+              >
+                Phoenix — IGL Certified
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+
+        <!-- Primary CTA -->
+        <div class="reveal mt-14 text-center">
+          <a
+            href="https://twizzyautospa.setmore.com/shayan"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-gold text-ink font-semibold text-lg hover:opacity-90 shadow-glow"
+          >
+            Get a Free Ceramic Quote
+          </a>
+          <p class="mt-3 text-white/50 text-sm">
+            Free, no-obligation quote for paint correction &amp; ceramic
+            coating.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Gallery -->
+    <section id="gallery" class="bg-ink/60 border-t border-b border-grayline">
+      <div class="max-w-7xl mx-auto px-4 py-20">
+        <div class="reveal text-center max-w-2xl mx-auto">
+          <h2 class="font-display text-3xl md:text-5xl font-bold">Our Work</h2>
+          <p class="mt-4 text-white/70">
+            Swipe through real transformations by our team.
+          </p>
+        </div>
+        <!-- Image Carousel -->
+        <div class="mt-10 relative reveal">
+          <div
+            class="overflow-hidden rounded-2xl border border-white/10 shadow-glow"
+          >
+            <div id="carouselTrack" class="carousel-track">
+              <img src="assets/1.jpg" alt="Detail 1" class="rounded-2xl" />
+              <img src="assets/2.jpg" alt="Detail 2" class="rounded-2xl" />
+              <img src="assets/3.jpg" alt="Detail 3" class="rounded-2xl" />
+              <img src="assets/4.jpg" alt="Detail 4" class="rounded-2xl" />
+              <img src="assets/5.jpg" alt="Detail 2" class="rounded-2xl" />
+              <img src="assets/6.jpg" alt="Detail 2" class="rounded-2xl" />
+              <img src="assets/7.jpg" alt="Detail 3" class="rounded-2xl" />
+              <img src="assets/8.jpg" alt="Detail 4" class="rounded-2xl" />
+              <img src="assets/9.jpg" alt="Detail 2" class="rounded-2xl" />
+              <img src="assets/10.jpg" alt="Detail 2" class="rounded-2xl" />
+              <img src="assets/11.jpg" alt="Detail 3" class="rounded-2xl" />
+              <img src="assets/12.jpg" alt="Detail 4" class="rounded-2xl" />
+              <img src="assets/13.jpg" alt="Detail 2" class="rounded-2xl" />
+              <img src="assets/14.jpg" alt="Detail 2" class="rounded-2xl" />
+            </div>
+          </div>
+          <!-- Carousel Controls -->
+          <button
+            id="carouselPrev"
+            class="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-ink/70 border border-white/20 text-white flex items-center justify-center hover:bg-ink/90 backdrop-blur z-10"
+          >
+            ‹
+          </button>
+          <button
+            id="carouselNext"
+            class="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-ink/70 border border-white/20 text-white flex items-center justify-center hover:bg-ink/90 backdrop-blur z-10"
+          >
+            ›
+          </button>
+          <!-- Dots -->
+          <div id="carouselDots" class="flex justify-center gap-2 mt-4"></div>
+        </div>
+
+        <!-- Partner / Certification Logos -->
+        <div class="mt-12">
+          <h3 class="text-center text-white/70 mb-6">
+            Trusted by & using products from
+          </h3>
+          <div
+            class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-6 items-center opacity-90"
+          >
+            <img
+              src="assets/logos/logo-1.png"
+              alt="Brand 1"
+              class="h-10 w-auto mx-auto grayscale hover:grayscale-0 transition"
+            />
+            <img
+              src="assets/logos/logo-2.png"
+              alt="Brand 2"
+              class="h-10 w-auto mx-auto grayscale hover:grayscale-0 transition"
+            />
+            <img
+              src="assets/logos/logo-3.png"
+              alt="Brand 3"
+              class="h-10 w-auto mx-auto grayscale hover:grayscale-0 transition"
+            />
+            <img
+              src="assets/logos/logo-4.png"
+              alt="Brand 4"
+              class="h-10 w-auto mx-auto grayscale hover:grayscale-0 transition"
+            />
+            <img
+              src="assets/logos/logo-5.png"
+              alt="Brand 5"
+              class="h-10 w-auto mx-auto grayscale hover:grayscale-0 transition"
+            />
+            <img
+              src="assets/logos/logo-6.png"
+              alt="Brand 6"
+              class="h-10 w-auto mx-auto grayscale hover:grayscale-0 transition"
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- About Us -->
+    <section id="about" class="max-w-7xl mx-auto px-4 py-20">
+      <div class="reveal grid md:grid-cols-2 gap-10 items-center">
+        <div>
+          <h2 class="font-display text-3xl md:text-5xl font-bold">About Us</h2>
+          <p class="mt-5 text-white/70 text-lg leading-relaxed">
+            Twizzy Auto Spa is a fully mobile detailing service proudly serving
+            the GTA and surrounding areas, bringing showroom-quality results
+            directly to your driveway. We use only professional-grade,
+            paint-safe products and proven techniques to restore, protect, and
+            maintain your vehicle. From quick factory refreshes to full ceramic
+            coatings, every service is executed with precision and attention to
+            detail.
+          </p>
+          <p class="mt-4 text-white/70 text-lg leading-relaxed">
+            Founded by Shayan and Phoenix—two friends and former college
+            roommates with a shared passion for cars—Twizzy Auto Spa was built
+            on a simple principle: deliver a level of quality that stands above
+            the rest. What began as a small, detail-focused operation has grown
+            into a trusted name across the GTA, driven by a commitment to
+            craftsmanship, precision, and raising the standard of what clients
+            should expect from professional detailing.
+          </p>
+        </div>
+        <div class="flex justify-center">
+          <img
+            src="https://i.ibb.co/ynGHxSJc/3512febe-a921-4c61-a131-81433461a367-removebg-preview.png"
+            alt="Twizzy Auto Spa"
+            class="w-72 md:w-96 drop-shadow-2xl"
+          />
+        </div>
+      </div>
+    </section>
+
+    <!-- Reviews -->
+    <section id="reviews" class="bg-ink/60 border-t border-b border-grayline">
+      <div class="max-w-7xl mx-auto px-4 py-20">
+        <div class="reveal text-center max-w-2xl mx-auto">
+          <h2 class="font-display text-3xl md:text-5xl font-bold">
+            What clients say
+          </h2>
+          <p class="mt-4 text-white/70">Rated 5.0 by local car lovers</p>
+        </div>
+        <div class="mt-10 grid md:grid-cols-3 gap-6">
+          <figure
+            class="reveal rounded-2xl p-6 bg-white/5 border border-white/10 shadow-glow"
+          >
+            <blockquote class="text-white/80">
+              "The team at Twizzy Auto Spa were very professional and
+              knowledgable about their services. Both our truck and car were
+              spotless inside and out. I would definitely recommend them for all
+              car detailing services."
+            </blockquote>
+            <figcaption class="mt-4 text-white/60 text-sm">— Jim K.</figcaption>
+          </figure>
+          <figure
+            class="reveal rounded-2xl p-6 bg-white/5 border border-white/10 shadow-glow"
+          >
+            <blockquote class="text-white/80">
+              "I hired Twizzy Auto Spa to detail my husband’s Jeep for Father’s
+              Day and could not have been more impressed. We have 2 kids,
+              meaning that it needed some serious TLC. Twizzy Auto Spa did a
+              fantastic job! My husband fell in love with his Jeep all over
+              again. Highly recommend."
+            </blockquote>
+            <figcaption class="mt-4 text-white/60 text-sm">
+              — Olga C.
+            </figcaption>
+          </figure>
+          <figure
+            class="reveal rounded-2xl p-6 bg-white/5 border border-white/10 shadow-glow"
+          >
+            <blockquote class="text-white/80">
+              "Absolutely incredible job done by the guys from Twizzy Auto Spa.
+              They went above and beyond my expectations for the detailing of my
+              car and I would highly recommend them for anyone else looking to
+              get their vehicle detailed with great results at a fair price."
+            </blockquote>
+            <figcaption class="mt-4 text-white/60 text-sm">
+              — Aidan A.
+            </figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- Contact / Booking -->
+    <section id="booking" class="max-w-7xl mx-auto px-4 py-20">
+      <div class="grid md:grid-cols-2 gap-10 items-center">
+        <div class="reveal">
+          <h2 class="font-display text-3xl md:text-5xl font-bold">
+            Ready for that glassy finish?
+          </h2>
+          <p class="mt-4 text-white/70">
+            Tell us about your vehicle and preferred date. We'll confirm
+            availability and pricing.
+          </p>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <a
+              href="tel:+16478830113"
+              class="px-6 py-3 rounded-xl border border-white/10 hover:border-white/20"
+              >Call Us</a
+            >
+            <a
+              href="https://twizzyautospa.setmore.com/shayan"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="px-6 py-3 rounded-xl bg-brand-600 text-white font-semibold hover:bg-brand-700"
+              >Book Now</a
+            >
+          </div>
+          <p class="mt-4 text-white/50 text-sm">
+            Prefer forms? Use the quick request →
+          </p>
+        </div>
+        <form
+          id="contact"
+          class="reveal space-y-4 bg-white/5 border border-white/10 rounded-2xl p-6 shadow-glow"
+          onsubmit="event.preventDefault(); this.reset(); alert('Thanks! We\'ll get right back to you.');"
+        >
+          <h3 class="font-display text-lg font-semibold text-white/90">
+            Request a Quote
+          </h3>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div>
+              <label class="text-sm text-white/70">Name</label>
+              <input
+                required
+                class="mt-1 w-full px-3 py-2 rounded-lg bg-white/10 border border-white/10 focus:outline-none focus:border-brand-400"
+              />
+            </div>
+            <div>
+              <label class="text-sm text-white/70">Phone</label>
+              <input
+                required
+                type="tel"
+                class="mt-1 w-full px-3 py-2 rounded-lg bg-white/10 border border-white/10 focus:outline-none focus:border-brand-400"
+              />
+            </div>
+            <div class="md:col-span-2">
+              <label class="text-sm text-white/70">Email</label>
+              <input
+                type="email"
+                class="mt-1 w-full px-3 py-2 rounded-lg bg-white/10 border border-white/10 focus:outline-none focus:border-brand-400"
+              />
+            </div>
+            <div class="md:col-span-2">
+              <label class="text-sm text-white/70">Message</label>
+              <textarea
+                rows="4"
+                placeholder="Vehicle info, preferred date, service you're interested in..."
+                class="mt-1 w-full px-3 py-2 rounded-lg bg-white/10 border border-white/10 focus:outline-none focus:border-brand-400"
+              ></textarea>
+            </div>
+          </div>
+          <button
+            class="w-full px-4 py-3 rounded-xl bg-brand-600 text-white font-semibold hover:bg-brand-700"
+          >
+            Request a Quote
+          </button>
+          <p class="text-center text-white/50 text-xs">
+            By submitting, you agree to be contacted about your booking.
+          </p>
+        </form>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="border-t border-grayline bg-ink/70">
+      <div
+        class="max-w-7xl mx-auto px-4 py-10 grid md:grid-cols-4 gap-8 text-sm"
+      >
+        <div class="space-y-3">
+          <img
+            src="https://i.ibb.co/ynGHxSJc/3512febe-a921-4c61-a131-81433461a367-removebg-preview.png"
+            alt="Twizzy Auto Spa"
+            class="h-10 w-auto"
+            style="width: 100px; height: 100px"
+          />
+          <p class="text-white/60">
+            Detailing | Paint Correction | Ceramic Coatings
+          </p>
+        </div>
+        <div>
+          <h4 class="text-white/80 font-semibold">Navigate</h4>
+          <ul class="mt-3 space-y-2 text-white/60">
+            <li><a href="#services" class="hover:text-white">Services</a></li>
+            <li><a href="#gallery" class="hover:text-white">Gallery</a></li>
+            <li><a href="#reviews" class="hover:text-white">Reviews</a></li>
+            <li><a href="#about" class="hover:text-white">About Us</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="text-white/80 font-semibold">Hours</h4>
+          <ul class="mt-3 space-y-2 text-white/60">
+            <li>Mon–Sat: 9am–6pm</li>
+            <li>Sunday: By appointment</li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="text-white/80 font-semibold">Get in touch</h4>
+          <ul class="mt-3 space-y-2 text-white/60">
+            <li>
+              <a href="tel:+16478830113" class="hover:text-white"
+                >(647)-883-0113</a
+              >
+            </li>
+            <li>
+              <a
+                href="/cdn-cgi/l/email-protection#5e2a29372424273f2b2a312d2e3f1e39333f3732703d3133"
+                class="hover:text-white"
+                ><span
+                  class="__cf_email__"
+                  data-cfemail="85f1f2ecfffffce4f0f1eaf6f5e4c5e2e8e4ece9abe6eae8"
+                  >[email&#160;protected]</span
+                ></a
+              >
+            </li>
+            <li>Serving GTA & surrounding areas</li>
+          </ul>
+        </div>
+      </div>
+      <div class="border-t border-grayline">
+        <div
+          class="max-w-7xl mx-auto px-4 py-6 text-xs text-white/50 flex flex-wrap items-center justify-between gap-3"
+        >
+          <p>© <span id="year"></span> Twizzy Auto Spa. All rights reserved.</p>
+          <div class="flex items-center gap-3">
+            <a href="#" class="hover:text-white">Privacy</a>
+            <span>•</span>
+            <a href="#" class="hover:text-white">Terms</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <script
+      data-cfasync="false"
+      src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"
+    ></script>
+    <script>
+      // Mobile menu toggle
+      const btn = document.getElementById("menuBtn");
+      const menu = document.getElementById("mobileMenu");
+      btn?.addEventListener("click", () => menu.classList.toggle("hidden"));
+      // Close mobile menu on link click
+      menu
+        ?.querySelectorAll("a")
+        .forEach((a) =>
+          a.addEventListener("click", () => menu.classList.add("hidden"))
+        );
+
+      // Scroll reveal
+      const io = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((e) => {
+            if (e.isIntersecting) {
+              e.target.classList.add("in");
+              io.unobserve(e.target);
+            }
+          });
+        },
+        { threshold: 0.08 }
+      );
+      document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+
+      // Year
+      document.getElementById("year").textContent = new Date().getFullYear();
+
+      // Expandable Ceramic / Paint Correction cards
+      document.querySelectorAll(".ceramic-toggle").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const card = btn.closest(".ceramic-card");
+          const details = card.querySelector(".ceramic-details");
+          const chevron = btn.querySelector(".chevron");
+          const hint = btn.querySelector(".toggle-hint");
+          const isOpen = details.classList.toggle("open");
+          btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+          if (chevron)
+            chevron.style.transform = isOpen
+              ? "rotate(180deg)"
+              : "rotate(0deg)";
+          if (hint)
+            hint.textContent = isOpen ? "Tap to close" : "Tap to read more";
+        });
+      });
+
+      // Carousel
+      (function () {
+        const track = document.getElementById("carouselTrack");
+        const dotsContainer = document.getElementById("carouselDots");
+        if (!track) return;
+        const images = track.querySelectorAll("img");
+        const total = images.length;
+        let current = 0;
+
+        // Build dots
+        for (let i = 0; i < total; i++) {
+          const dot = document.createElement("button");
+          dot.className =
+            "h-2 w-2 rounded-full transition-all " +
+            (i === 0 ? "bg-brand-500 w-6" : "bg-white/30");
+          dot.addEventListener("click", () => goTo(i));
+          dotsContainer.appendChild(dot);
+        }
+
+        function goTo(index) {
+          current = index;
+          track.style.transform = "translateX(-" + current * 100 + "%)";
+          updateDots();
+        }
+        function updateDots() {
+          dotsContainer.querySelectorAll("button").forEach((d, i) => {
+            d.className =
+              "h-2 rounded-full transition-all " +
+              (i === current ? "bg-brand-500 w-6" : "bg-white/30 w-2");
+          });
+        }
+        document
+          .getElementById("carouselPrev")
+          ?.addEventListener("click", () =>
+            goTo((current - 1 + total) % total)
+          );
+        document
+          .getElementById("carouselNext")
+          ?.addEventListener("click", () => goTo((current + 1) % total));
+
+        // Touch swipe support
+        let startX = 0;
+        track.addEventListener(
+          "touchstart",
+          (e) => {
+            startX = e.touches[0].clientX;
+          },
+          { passive: true }
+        );
+        track.addEventListener(
+          "touchend",
+          (e) => {
+            const diff = startX - e.changedTouches[0].clientX;
+            if (Math.abs(diff) > 50) {
+              diff > 0
+                ? goTo((current + 1) % total)
+                : goTo((current - 1 + total) % total);
+            }
+          },
+          { passive: true }
+        );
+      })();
+    </script>
+  </body>
+</html>
