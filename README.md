@@ -1,211 +1,207 @@
 <div align="center">
 
-# 🚗💨 TWIZZY AUTO SPA
+# Twizzy Auto Spa — Website
 
-### *Showroom shine, delivered to your driveway.*
+Marketing website for **Twizzy Auto Spa**, a fully mobile auto detailing service
+in the Greater Toronto Area offering detailing packages, paint correction, and
+ceramic coatings.
 
-**Premium Mobile Detailing • Paint Correction • Ceramic Coatings**
+A single-page, dependency-free static site built with Tailwind CSS and vanilla JavaScript.
 
-[![Book Now](https://img.shields.io/badge/📅_BOOK_NOW-dc2626?style=for-the-badge&logoColor=white)](https://twizzyautospa.setmore.com/shayan)
-[![Call Us](https://img.shields.io/badge/📞_(647)_883--0113-0a0a0a?style=for-the-badge)](tel:+16478830113)
-[![Rating](https://img.shields.io/badge/⭐_5.0_Rating-f4d35e?style=for-the-badge&logoColor=black)](#-what-clients-say)
-
-![Status](https://img.shields.io/badge/status-live-22c55e?style=flat-square)
-![Area](https://img.shields.io/badge/serving-GTA_+_surrounding-dc2626?style=flat-square)
-![IGL](https://img.shields.io/badge/IGL-Certified-f4d35e?style=flat-square)
-![Mobile](https://img.shields.io/badge/100%25-Mobile-3b82f6?style=flat-square)
+[![Live Site](https://img.shields.io/badge/live-site-22c55e?style=flat-square)](https://twizzyautospa.setmore.com/shayan)
+![HTML5](https://img.shields.io/badge/HTML5-e34f26?style=flat-square&logo=html5&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38bdf8?style=flat-square&logo=tailwindcss&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-f7df1e?style=flat-square&logo=javascript&logoColor=black)
+![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
 </div>
 
 ---
 
-```
-        ╔═══════════════════════════════════════════════╗
-        ║   WE COME TO YOU. WE MAKE IT GLEAM. PERIOD.   ║
-        ╚═══════════════════════════════════════════════╝
-```
+## Table of Contents
 
-> Founded by **Shayan** & **Phoenix** — two friends and former college roommates
-> with a shared obsession for cars — Twizzy Auto Spa brings high-end detailing
-> standards straight to your driveway. No drop-offs. No waiting rooms. Just a
-> showroom finish where you park.
-
----
-
-## ✨ Why Twizzy
-
-| | |
-|---|---|
-| ⭐ **100+ Five-Star Reviews** | Trusted by GTA car lovers |
-| 🛡️ **Safe, Pro Techniques** | Paint-safe products, every time |
-| ✨ **Showroom-Quality Results** | Mirror-finish, guaranteed |
-| 🚐 **Fully Mobile** | We come to *you* |
+- [Overview](#overview)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Getting Started](#getting-started)
+- [Project Structure](#project-structure)
+- [Adding Your Assets](#adding-your-assets)
+- [Customization](#customization)
+- [Deployment](#deployment)
+- [Browser Support](#browser-support)
+- [License](#license)
 
 ---
 
-## 🧴 Detailing Packages
+## Overview
 
-> *Professional, showroom-quality results — at your home. Effortless, refined, done right.*
+This repository contains the source for the Twizzy Auto Spa marketing site. The
+entire site is a single `index.html` file with no build step, package manager, or
+backend — making it trivial to host on any static platform (GitHub Pages, Netlify,
+Vercel, Cloudflare Pages, etc.).
 
-### 🔄 Factory Reset — `Sedan $165 / SUV $185`
-The essentials, done right.
-```
-✓ Full Interior Vacuum      ✓ Exterior Hand Wash & Dry
-✓ Interior Spray N Wipe     ✓ Mats Cleaned
-✓ Glass Cleaning            ✓ Tire Shine
-```
-
-### 🏆 Showroom Ready — `Sedan $250 / SUV $275`  `★ MOST POPULAR`
-Everything in Factory Reset, **plus the deep clean:**
-```
-+ Steam Cleaning            + Carpet Shampoo + Extraction
-+ Leather Conditioning      + Interior Shine
-+ Exterior Hand Wax
-```
-
-### 💎 Platinum Protection — `Sedan $325 / SUV $350`  `★ TOP TIER`
-The full transformation, **plus the works:**
-```
-+ Engine Bay Full Detail    + Ceramic Sealant Spray
-+ Paint Decontamination
-```
-
-> ⚡ *Access to water and electricity is required for all mobile services.*
+The site presents service packages and pricing, explains paint correction and
+ceramic coating offerings, showcases a photo gallery, displays customer reviews,
+and drives bookings to an external [Setmore](https://www.setmore.com/) scheduling page.
 
 ---
 
-## 🛡️ Paint Correction & Ceramic Coating
+## Features
 
-*True protection starts with the paint.*
-
-<table>
-<tr>
-<td width="33%" align="center">
-
-### 🛡️
-**Protection**
-A hard, hydrophobic barrier against UV, grime & minor scratches.
-
-</td>
-<td width="33%" align="center">
-
-### ✨
-**Gloss**
-Multi-stage correction restores depth, clarity & true color.
-
-</td>
-<td width="33%" align="center">
-
-### ⏳
-**Longevity**
-Years of durable protection. Cleaner, newer, longer.
-
-</td>
-</tr>
-</table>
-
-**💎 Ceramic Coating** — IGL Certified **3–5 year** coating. Full-surface coverage
-(paint, wheels, glass & trim) for the ultimate gloss and protection.
-
-**🔥 Paint Correction** — 1–3 stage machine polishing that erases swirl marks,
-scratches & oxidation for a true mirror finish.
-
-> 👨‍🔧 Both detailers — **Shayan** and **Phoenix** — are officially **IGL Coatings certified.**
+- **Responsive, mobile-first layout** — adapts cleanly from phones to desktops
+- **Service package cards** — Factory Reset, Showroom Ready, and Platinum Protection with pricing
+- **Expandable detail cards** — collapsible Ceramic Coating and Paint Correction sections
+- **Touch-enabled image carousel** — swipe gestures, prev/next controls, and dot navigation
+- **Scroll-reveal animations** — sections fade in on scroll via `IntersectionObserver`
+- **Sticky navigation** — with a slide-down mobile menu
+- **Before/after & certification galleries** — with graceful placeholders when images are missing
+- **Quote request form** — client-side validation (no backend; see [Customization](#customization))
+- **Booking & click-to-call CTAs** throughout
 
 ---
 
-## 🌟 What Clients Say
+## Tech Stack
 
-> *"Both our truck and car were spotless inside and out. I would definitely
-> recommend them for all car detailing services."*
-> — **Jim K.**
+| Layer | Technology |
+|-------|-----------|
+| Markup | HTML5 |
+| Styling | [Tailwind CSS](https://tailwindcss.com/) via CDN |
+| Fonts | [Outfit](https://fonts.google.com/specimen/Outfit) via Google Fonts |
+| Scripting | Vanilla JavaScript (no frameworks, no dependencies) |
 
-> *"Detailed my husband's Jeep for Father's Day... fantastic job! He fell in
-> love with his Jeep all over again. Highly recommend."*
-> — **Olga C.**
-
-> *"Absolutely incredible job. Went above and beyond my expectations... great
-> results at a fair price."*
-> — **Aidan A.**
+No build tooling is required. Tailwind is loaded through its CDN with an inline
+`tailwind.config` for the custom theme (brand red, gold accents, dark "ink" palette).
 
 ---
 
-## 🛠️ Tech Stack
+## Getting Started
 
-This is a fast, single-page marketing site — no build step, deploy-anywhere static HTML.
+### Prerequisites
 
-```
-🎨  Tailwind CSS (CDN)        — utility-first styling
-🔤  Outfit (Google Fonts)     — display + body type
-⚡  Vanilla JavaScript        — zero dependencies
-📱  Mobile-first responsive   — looks sharp on every screen
+A modern web browser. Optionally, Python or Node.js to run a local server (recommended
+so that relative `/assets` paths resolve correctly).
+
+### Run locally
+
+Clone the repository:
+
+```bash
+git clone https://github.com/<your-username>/twizzy-auto-spa.git
+cd twizzy-auto-spa
 ```
 
-**Custom flourishes**
-- 🎞️ Touch-swipeable image carousel with dot navigation
-- 👁️ Scroll-reveal animations via `IntersectionObserver`
-- 📂 Expandable service cards (ceramic / paint correction)
-- 🍔 Slide-down mobile menu
-- 🎨 Dark theme — `ink black` + `brand red` + `gold` accents
+Then serve it with any static server:
+
+```bash
+# Python 3
+python -m http.server 8000
+
+# or Node.js
+npx serve
+```
+
+Open <http://localhost:8000> in your browser.
+
+> You can also just double-click `index.html`, but a local server is recommended
+> so images and other assets load correctly.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 twizzy-auto-spa/
-├── index.html              # the whole site lives here
+├── index.html              # Entire site: markup, inline Tailwind config, and scripts
+├── README.md
 └── assets/
-    ├── porsche.jpeg        # hero image
-    ├── before.jpeg         # ceramic before
-    ├── after.jpeg          # ceramic after
-    ├── igl-shayan.jpg      # IGL certificate
-    ├── igl-phoenix.jpg     # IGL certificate
-    ├── 1.jpg … 14.jpg      # gallery carousel
+    ├── porsche.jpeg        # Hero image
+    ├── before.jpeg         # Ceramic before
+    ├── after.jpeg          # Ceramic after
+    ├── igl-shayan.jpg      # IGL certification
+    ├── igl-phoenix.jpg     # IGL certification
+    ├── 1.jpg … 14.jpg      # Gallery carousel images
     └── logos/
-        └── logo-1.png … logo-6.png   # partner / product brands
+        └── logo-1.png … logo-6.png   # Partner / product brand logos
 ```
 
 ---
 
-## 🚀 Run It Locally
+## Adding Your Assets
 
-No build tools, no npm, no fuss. Just open it:
+Image paths are referenced relative to the site root. Drop files into `/assets/`
+using the exact filenames above. Until the files exist, the gallery and
+before/after sections display labeled placeholders, and the logo grid shows
+broken-image icons.
 
-```bash
-# Option 1 — double-click index.html
+Recommended image sizes:
 
-# Option 2 — quick local server (recommended, so /assets load)
-python -m http.server 8000
-#   → visit http://localhost:8000
-```
-
-> 💡 Drop real photos into `/assets/` using the filenames above. Until they
-> exist, the gallery and before/after slots show labeled placeholders.
-
----
-
-## 📞 Get In Touch
-
-<div align="center">
-
-| | |
-|---|---|
-| 📞 **Phone** | [(647)-883-0113](tel:+16478830113) |
-| 📅 **Book** | [twizzyautospa.setmore.com/shayan](https://twizzyautospa.setmore.com/shayan) |
-| 🕘 **Hours** | Mon–Sat 9am–6pm · Sun by appointment |
-| 📍 **Area** | Serving the GTA & surrounding areas |
-
-</div>
+| Asset | Suggested width |
+|-------|-----------------|
+| Hero (`porsche.jpeg`) | ~1600px |
+| Before / after | ~1200px |
+| Gallery (`1.jpg`–`14.jpg`) | ~1200px |
+| Logos | transparent PNG, ~240px wide |
 
 ---
 
+## Customization
+
+Common edits, all within `index.html`:
+
+- **Theme colors** — edit the `tailwind.config` block near the top (`<head>`).
+  The brand palette, `gold`, and dark `ink`/`paper` tones are defined there.
+- **Pricing & packages** — update the package cards in the `#services` section.
+- **Contact info** — phone number (`tel:` links), hours (footer), and the
+  booking URL (`https://twizzyautospa.setmore.com/shayan`) appear in multiple
+  places; search and replace each.
+- **Reviews** — edit the `<figure>` blocks in the `#reviews` section.
+- **Quote form** — the form in `#booking` currently only resets and shows an
+  `alert()` on submit. To actually receive submissions, wire it up to a service
+  such as [Formspree](https://formspree.io/), [Getform](https://getform.io/), or
+  your own endpoint by setting the form `action`/`method` and removing the
+  inline `onsubmit` handler.
+
+---
+
+## Deployment
+
+Because this is a static site, deployment is simple. A few options:
+
+### GitHub Pages
+
+1. Push the repository to GitHub.
+2. Go to **Settings → Pages**.
+3. Under **Build and deployment**, set **Source** to *Deploy from a branch*,
+   choose your branch (e.g. `main`) and the `/ (root)` folder.
+4. Save — your site publishes at `https://<your-username>.github.io/twizzy-auto-spa/`.
+
+### Netlify / Vercel / Cloudflare Pages
+
+Connect the repo and deploy with default settings. There is **no build command**
+and the **publish/output directory is the project root**.
+
+---
+
+## Browser Support
+
+Works in all modern evergreen browsers (Chrome, Edge, Firefox, Safari). Relies on
+`IntersectionObserver` and CSS features that are well-supported across current
+browser versions.
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).
+
+The Twizzy Auto Spa name, logo, branding, and photography are property of Twizzy
+Auto Spa and are **not** covered by the MIT license.
+
+---
+
 <div align="center">
 
-**Detailing · Paint Correction · Ceramic Coatings**
-
-*© 2026 Twizzy Auto Spa. All rights reserved.*
-
-`Made with 🧽, ✨, and a whole lot of microfiber.`
+**Twizzy Auto Spa** · Detailing · Paint Correction · Ceramic Coatings
+Serving the GTA & surrounding areas · [(647) 883-0113](tel:+16478830113)
 
 </div>
