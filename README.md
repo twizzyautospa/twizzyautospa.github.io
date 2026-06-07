@@ -173,7 +173,7 @@ Because this is a static site, deployment is simple. A few options:
 2. Go to **Settings → Pages**.
 3. Under **Build and deployment**, set **Source** to *Deploy from a branch*,
    choose your branch (e.g. `main`) and the `/ (root)` folder.
-4. Save — your site publishes at `https://twizzyautospa.github.io/twizzy-auto-spa/`.
+4. Save — your site publishes at `https://twizzyautospa.github.io`.
 
 ### Netlify / Vercel / Cloudflare Pages
 
