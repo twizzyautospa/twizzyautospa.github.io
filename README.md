@@ -200,6 +200,7 @@ Auto Spa and are **not** covered by the MIT license.
 <div align="center">
 
 **Twizzy Auto Spa** · Detailing · Paint Correction · Ceramic Coatings
-Serving the GTA & surrounding areas · [(647) 883-0113](tel:+16478830113)
+Serving the GTA & surrounding areas
+[(647) 883-0113](tel:+16478830113)
 
 </div>
