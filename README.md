@@ -86,7 +86,7 @@ so that relative `/assets` paths resolve correctly).
 Clone the repository:
 
 ```bash
-git clone https://github.com/<your-username>/twizzy-auto-spa.git
+git clone https://github.com/twizzyautospa.git
 cd twizzy-auto-spa
 ```
 
@@ -100,7 +100,7 @@ python -m http.server 8000
 npx serve
 ```
 
-Open <http://localhost:8000> in your browser.
+Open <http://localhost:8000> in  browser.
 
 > You can also just double-click `index.html`, but a local server is recommended
 > so images and other assets load correctly.
@@ -173,7 +173,7 @@ Because this is a static site, deployment is simple. A few options:
 2. Go to **Settings → Pages**.
 3. Under **Build and deployment**, set **Source** to *Deploy from a branch*,
    choose your branch (e.g. `main`) and the `/ (root)` folder.
-4. Save — your site publishes at `https://<your-username>.github.io/twizzy-auto-spa/`.
+4. Save — your site publishes at `https://twizzyautospa.github.io/`.
 
 ### Netlify / Vercel / Cloudflare Pages
 
