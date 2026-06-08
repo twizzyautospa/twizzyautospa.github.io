@@ -72,6 +72,17 @@
       .carousel-track img {
         min-width: 100%;
         object-fit: cover;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-user-drag: none;
+        pointer-events: none;
+      }
+      /* Prevent double-tap-to-zoom on carousel controls and track */
+      #carouselTrack,
+      #carouselPrev,
+      #carouselNext,
+      #carouselDots button {
+        touch-action: manipulation;
       }
       .ceramic-toggle {
         cursor: pointer;
@@ -1228,21 +1239,26 @@
 
         // Touch swipe support
         let startX = 0;
+        let startY = 0;
         track.addEventListener(
           "touchstart",
           (e) => {
             startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
           },
           { passive: true }
         );
         track.addEventListener(
           "touchend",
           (e) => {
-            const diff = startX - e.changedTouches[0].clientX;
-            if (Math.abs(diff) > 50) {
-              diff > 0
+            const diffX = startX - e.changedTouches[0].clientX;
+            const diffY = startY - e.changedTouches[0].clientY;
+            // Only treat as a swipe if mostly horizontal (ignore vertical scrolls)
+            if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
+              diffX > 0
                 ? goTo((current + 1) % total)
                 : goTo((current - 1 + total) % total);
+              resetTimer();
             }
           },
           { passive: true }
