@@ -77,12 +77,15 @@
         -webkit-user-drag: none;
         pointer-events: none;
       }
-      /* Prevent double-tap-to-zoom on carousel controls and track */
-      #carouselTrack,
+      /* Prevent double-tap-to-zoom on carousel controls */
       #carouselPrev,
       #carouselNext,
       #carouselDots button {
         touch-action: manipulation;
+      }
+      /* Allow vertical scroll, but let JS handle horizontal swipes */
+      #carouselViewport {
+        touch-action: pan-y;
       }
       .ceramic-toggle {
         cursor: pointer;
@@ -822,6 +825,7 @@
         <!-- Image Carousel -->
         <div class="mt-10 relative reveal">
           <div
+            id="carouselViewport"
             class="overflow-hidden rounded-2xl border border-white/10 shadow-glow"
           >
             <div id="carouselTrack" class="carousel-track">
@@ -1237,10 +1241,12 @@
         }, { threshold: 0.4 });
         carouselViewObserver.observe(track);
 
-        // Touch swipe support
+        // Touch swipe support — bound to the stationary viewport, not the
+        // moving track (the track translates offscreen as you advance).
+        const viewport = document.getElementById("carouselViewport") || track;
         let startX = 0;
         let startY = 0;
-        track.addEventListener(
+        viewport.addEventListener(
           "touchstart",
           (e) => {
             startX = e.touches[0].clientX;
@@ -1248,7 +1254,7 @@
           },
           { passive: true }
         );
-        track.addEventListener(
+        viewport.addEventListener(
           "touchend",
           (e) => {
             const diffX = startX - e.changedTouches[0].clientX;
