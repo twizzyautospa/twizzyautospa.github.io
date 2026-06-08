@@ -8,7 +8,7 @@ ceramic coatings.
 
 A single-page, dependency-free static site built with Tailwind CSS and vanilla JavaScript.
 
-[![Live Site](https://img.shields.io/badge/live-site-22c55e?style=flat-square)](https://twizzyautospa.setmore.com/shayan)
+[![Live Site](https://img.shields.io/badge/live-site-22c55e?style=flat-square)]([https://twizzyautospa.setmore.com/shayan](https://twizzyautospa.github.io/))
 ![HTML5](https://img.shields.io/badge/HTML5-e34f26?style=flat-square&logo=html5&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38bdf8?style=flat-square&logo=tailwindcss&logoColor=white)
 ![JavaScript](https://img.shields.io/badge/JavaScript-f7df1e?style=flat-square&logo=javascript&logoColor=black)
