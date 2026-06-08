@@ -1206,12 +1206,14 @@
         }
         document
           .getElementById("carouselPrev")
-          ?.addEventListener("click", () =>
-            goTo((current - 1 + total) % total)
-          );
+          ?.addEventListener("click", () => { goTo((current - 1 + total) % total); resetTimer(); });
         document
           .getElementById("carouselNext")
-          ?.addEventListener("click", () => goTo((current + 1) % total));
+          ?.addEventListener("click", () => { goTo((current + 1) % total); resetTimer(); });
+
+        // Auto-advance every 3 seconds
+        let timer = setInterval(() => goTo((current + 1) % total), 3000);
+        function resetTimer() { clearInterval(timer); timer = setInterval(() => goTo((current + 1) % total), 3000); }
 
         // Touch swipe support
         let startX = 0;
