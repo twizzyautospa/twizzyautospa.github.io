@@ -185,7 +185,7 @@ and the **publish/output directory is the project root**.
 ## Browser Support
 
 Works in all modern evergreen browsers (Chrome, Edge, Firefox, Safari). Relies on
-`IntersectionObserver` and CSS features that are well-supported across current
+`IntersectionObserver` and CSS features that are well supported across current
 browser versions.
 
 ---
