@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "hormozi-skills": {
+      "source": { "source": "github", "repo": "alexsmedile/hormozi-skills" }
+    }
+  },
+  "enabledPlugins": {
+    "hormozi-skills@hormozi-skills": true
+  }
+}
