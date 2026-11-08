@@ -10,7 +10,10 @@ Ultron's brain lives in Shayan's private Notion workspace, not in this repo
 
 1. Fetch **Ultron — Operating Manual** (Notion page `412f240dded5818d9fabdd026adf633e`)
    and follow it exactly. Then fetch **Ultron — Playbook & Learnings**
-   (Notion page `412f240dded581da9714df05fbf8062b`).
+   (Notion page `412f240dded581da9714df05fbf8062b`) and, as the manual says,
+   the SOPs the job needs from **Ultron — SOP Library**
+   (Notion page `412f240dded58185b1c3fd0461c1a6eb`): creative delivery,
+   KPI cheat sheet, native static playbook, copy principles, swipe file.
 2. Pick the routine from the request and run it as the manual describes:
    - "morning" / "check" / "status" → section 4.1 (status = read-only summary from
      today's Daily Log rows if they exist, otherwise a fresh pull)
