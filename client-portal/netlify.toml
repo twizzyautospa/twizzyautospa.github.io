@@ -1,0 +1,5 @@
+# Used if this folder is ever linked to Netlify for Git builds.
+# Manual deploys go through scripts/deploy.mjs (see README.md).
+[build]
+  publish = "public"
+  functions = "netlify/functions"

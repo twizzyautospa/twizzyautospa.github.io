@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LeadThru Portal</title>
+<meta name="description" content="Your LeadThru leads and pipeline, live.">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#040604">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LeadThru">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<svg width="0" height="0" class="defs" aria-hidden="true">
+  <symbol id="i-mark" viewBox="0 0 100 100"><path d="M22 8 L40 18 L40 62 L64 62 L64 44 L92 68 L64 92 L64 74 L22 74 Z" fill="currentColor"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.6-4.5M4 4v4h4M4 13a8 8 0 0 0 14.6 4.5M20 20v-4h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-sms" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><path d="M4 6h16v12H4zM4 7l8 6 8-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4M6 11H5v9h14v-9h-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<!-- LOGIN -->
+<main id="login" class="login" hidden>
+  <form class="login-card" id="loginForm" autocomplete="on" novalidate>
+    <div class="brand big"><svg><use href="#i-mark"/></svg><span class="wm">Lead<span>Thru</span></span></div>
+    <div class="tagpill"><i></i> Client portal</div>
+    <h1>Your leads, <em>live.</em></h1>
+    <p class="sub">Sign in to see every lead and update your pipeline. Changes go straight to your LeadThru dashboard.</p>
+    <label class="field"><span>Username</span>
+      <input id="username" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+    </label>
+    <label class="field"><span>Password</span>
+      <input id="password" name="password" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+    </label>
+    <p class="err" id="loginErr" role="alert" hidden></p>
+    <button class="btn" id="loginBtn" type="submit">Sign in <svg><use href="#i-mark"/></svg></button>
+    <p class="help">Trouble signing in? Text LeadThru at <a href="sms:+16478830113">(647) 883-0113</a></p>
+  </form>
+</main>
+
+<!-- APP -->
+<div id="app" class="app" hidden>
+  <header class="top">
+    <div class="brand"><svg><use href="#i-mark"/></svg><span class="wm">Lead<span>Thru</span></span></div>
+    <div class="who" id="who"></div>
+    <select id="pipelinePick" class="pick" aria-label="Choose client" hidden></select>
+    <div class="top-actions">
+      <button class="icon-btn" id="refreshBtn" type="button" aria-label="Refresh"><svg><use href="#i-refresh"/></svg></button>
+      <button class="icon-btn" id="logoutBtn" type="button" aria-label="Sign out"><svg><use href="#i-out"/></svg></button>
+    </div>
+  </header>
+
+  <section class="summary" id="summary"></section>
+
+  <div class="install" id="installHint" hidden>
+    <div><b>Save this to your phone.</b> <span id="installText"></span></div>
+    <button class="btn sm" id="installBtn" type="button" hidden>Install</button>
+    <button class="icon-btn small" id="installClose" type="button" aria-label="Dismiss"><svg><use href="#i-x"/></svg></button>
+  </div>
+
+  <div class="tools">
+    <label class="search"><svg><use href="#i-search"/></svg>
+      <input id="search" type="search" placeholder="Search name or phone" autocomplete="off" autocapitalize="none">
+    </label>
+  </div>
+
+  <nav class="chips" id="chips" aria-label="Pipeline stages"></nav>
+
+  <main class="board" id="board" aria-live="polite"></main>
+
+  <p class="synced" id="synced"></p>
+</div>
+
+<!-- LEAD SHEET -->
+<div class="scrim" id="scrim" hidden></div>
+<aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetName" hidden>
+  <div class="grab" aria-hidden="true"></div>
+  <button class="icon-btn close" id="sheetClose" type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+  <div class="sheet-body" id="sheetBody"></div>
+</aside>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<div class="boot" id="boot"><svg><use href="#i-mark"/></svg></div>
+
+<script src="/app.js" defer></script>
+</body>
+</html>
