@@ -1,0 +1,15 @@
+{
+  "name": "leadthru-client-portal",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "deploy": "node scripts/deploy.mjs",
+    "dev": "node scripts/dev.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": "8.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2"
+  }
+}

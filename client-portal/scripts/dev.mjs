@@ -22,7 +22,7 @@ createServer(async (req, res) => {
       queryStringParameters: Object.fromEntries(url.searchParams), body: body || null, isBase64Encoded: false,
     });
     res.writeHead(out.statusCode, out.headers);
-    return res.end(out.body);
+    return res.end(out.isBase64Encoded ? Buffer.from(out.body, 'base64') : out.body);
   }
   const rel = normalize(url.pathname === '/' ? '/index.html' : url.pathname).replace(/^(\.\.[/\\])+/, '');
   try {

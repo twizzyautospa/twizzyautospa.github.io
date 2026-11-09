@@ -62,12 +62,16 @@ for (const p of walk(PUBLIC)) {
 
 const functions = {};
 const fnZips = {};
-// JSON files next to the functions (e.g. brands.json) ship inside every function bundle.
-const extras = readdirSync(FUNCTIONS).filter((f) => f.endsWith('.json'))
-  .map((f) => ({ name: f, data: readFileSync(join(FUNCTIONS, f)) }));
+// Bundle each function with its npm dependencies (e.g. @netlify/blobs) into one file.
+const { build } = await import('esbuild');
+const BUILD = join(ROOT, '.build');
 for (const p of readdirSync(FUNCTIONS).filter((f) => f.endsWith('.js'))) {
   const name = p.replace(/\.js$/, '');
-  const z = zip([{ name: p, data: readFileSync(join(FUNCTIONS, p)) }, ...extras]);
+  await build({
+    entryPoints: [join(FUNCTIONS, p)], outfile: join(BUILD, p),
+    bundle: true, platform: 'node', target: 'node18', format: 'cjs', logLevel: 'warning',
+  });
+  const z = zip([{ name: p, data: readFileSync(join(BUILD, p)) }]);
   const h = sha256(z);
   functions[name] = h;
   fnZips[h] = { name, z };

@@ -31,6 +31,10 @@
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 10.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM21 19v-1a4 4 0 0 0-3-3.9M15.5 3.6a3.5 3.5 0 0 1 0 6.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v4h16v-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4M6 11H5v9h14v-9h-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 </svg>
 
@@ -66,12 +70,14 @@
       <div class="who" id="who"></div>
       <select id="pipelinePick" class="pick" aria-label="Choose client" hidden></select>
       <div class="top-actions">
+        <button class="icon-btn" id="clientsBtn" type="button" aria-label="Clients" title="Clients" hidden><svg><use href="#i-users"/></svg></button>
         <button class="icon-btn" id="refreshBtn" type="button" aria-label="Refresh"><svg><use href="#i-refresh"/></svg></button>
         <button class="icon-btn" id="logoutBtn" type="button" aria-label="Sign out"><svg><use href="#i-out"/></svg></button>
       </div>
     </header>
   </div>
 
+  <div id="leadsView">
   <section class="summary" id="summary"></section>
 
   <div class="install" id="installHint" hidden>
@@ -91,6 +97,9 @@
   <main class="board" id="board" aria-live="polite"></main>
 
   <p class="synced" id="synced"></p>
+  </div>
+
+  <section class="clients-view" id="clientsView" hidden></section>
 
   <footer class="lt-foot" id="ltFoot" hidden>
     <div>
@@ -107,6 +116,13 @@
   <div class="grab" aria-hidden="true"></div>
   <button class="icon-btn close" id="sheetClose" type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
   <div class="sheet-body" id="sheetBody"></div>
+</aside>
+
+<!-- CLIENT EDITOR (admin) -->
+<aside class="sheet editor" id="editor" role="dialog" aria-modal="true" aria-labelledby="editorTitle" hidden>
+  <div class="grab" aria-hidden="true"></div>
+  <button class="icon-btn close" id="editorClose" type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+  <div class="sheet-body" id="editorBody"></div>
 </aside>
 
 <div class="toast" id="toast" role="status" hidden></div>
