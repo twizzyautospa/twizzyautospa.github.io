@@ -3,6 +3,7 @@
 //   node scripts/users.mjs add <username> "<Client Name>" <ghlPipelineId>
 //   node scripts/users.mjs add-admin <username> "<Name>"
 //   node scripts/users.mjs reset <username>
+//   node scripts/users.mjs set <username> '<password>'
 //   node scripts/users.mjs remove <username>
 // Then run: node scripts/deploy.mjs   (functions read env vars at deploy time)
 // New passwords are printed once. Only the hash is stored.
@@ -41,6 +42,14 @@ if (cmd === 'list' || !cmd) {
   x.h = hashPassword(pw);
   await save();
   console.log(`${x.u}  new password: ${pw}`);
+} else if (cmd === 'set') {
+  const [u, pw] = args;
+  const x = find(u);
+  if (!x) throw new Error(`No user ${u}`);
+  if (!pw || pw.length < 6) throw new Error('Password must be at least 6 characters');
+  x.h = hashPassword(pw);
+  await save();
+  console.log(`${x.u}  password set`);
 } else if (cmd === 'remove') {
   const i = users.findIndex((x) => x.u === String(args[0] || '').toLowerCase());
   if (i < 0) throw new Error(`No user ${args[0]}`);
