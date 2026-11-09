@@ -43,6 +43,24 @@ node scripts/users.mjs remove oldclient
 node scripts/deploy.mjs                                                   # push code + env changes live
 ```
 
+### Client branding
+
+After login, each client sees a light page in their own colours with their logo in the header,
+plus a "Powered by LeadThru" strip on top and a LeadThru sign-off at the bottom. Their logo also
+becomes the app icon when they add the portal to their home screen. The sign-in page and the admin
+view stay LeadThru-branded.
+
+```bash
+python3 scripts/make-brand.py <username> path/to/logo.png --name "Client Name" --short "Short" \
+  [--color "#hex"] [--icon-right <x>] [--show-name]
+node scripts/deploy.mjs
+```
+
+This writes `public/brands/<random-slug>/` and the entry in `netlify/functions/brands.json`.
+`--icon-right` crops the app icon to the left part of a wide logo (just the mark);
+`--show-name` prints the client name beside a logo that does not include it.
+Needs Python with Pillow.
+
 Outside Claude Code cloud sessions, set `NETLIFY_AUTH_TOKEN` first. Inside one, the proxy supplies it
 (and Node needs `NODE_USE_ENV_PROXY=1` to use the proxy).
 

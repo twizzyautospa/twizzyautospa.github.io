@@ -1,0 +1,31 @@
+{
+  "name": "Terra Bella Landscaping",
+  "short_name": "Terra Bella",
+  "description": "Terra Bella Landscaping leads, powered by LeadThru.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#040604",
+  "icons": [
+    {
+      "src": "/brands/d4e02bcb3f/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brands/d4e02bcb3f/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brands/d4e02bcb3f/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

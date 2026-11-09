@@ -1,0 +1,42 @@
+{
+  "atoz": {
+    "slug": "ca05036de5",
+    "name": "A to Z Electrical Services",
+    "short": "A to Z",
+    "color": "#FF6600",
+    "showName": false,
+    "logoRatio": 1.771
+  },
+  "brighthomecare": {
+    "slug": "5ddff7b1ac",
+    "name": "Bright Home Care",
+    "short": "Bright Home",
+    "color": "#283287",
+    "showName": false,
+    "logoRatio": 3.435
+  },
+  "eliteexteriors": {
+    "slug": "2e2af6316b",
+    "name": "Elite Exteriors",
+    "short": "Elite",
+    "color": "#C1986C",
+    "showName": true,
+    "logoRatio": 0.885
+  },
+  "summersolutions": {
+    "slug": "bfbde0c641",
+    "name": "Summer Solutions",
+    "short": "Summer",
+    "color": "#151112",
+    "showName": false,
+    "logoRatio": 1.812
+  },
+  "terrabella": {
+    "slug": "d4e02bcb3f",
+    "name": "Terra Bella Landscaping",
+    "short": "Terra Bella",
+    "color": "#036E41",
+    "showName": false,
+    "logoRatio": 4.268
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "Bright Home Care",
+  "short_name": "Bright Home",
+  "description": "Bright Home Care leads, powered by LeadThru.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#040604",
+  "icons": [
+    {
+      "src": "/brands/5ddff7b1ac/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brands/5ddff7b1ac/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brands/5ddff7b1ac/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -62,9 +62,12 @@ for (const p of walk(PUBLIC)) {
 
 const functions = {};
 const fnZips = {};
+// JSON files next to the functions (e.g. brands.json) ship inside every function bundle.
+const extras = readdirSync(FUNCTIONS).filter((f) => f.endsWith('.json'))
+  .map((f) => ({ name: f, data: readFileSync(join(FUNCTIONS, f)) }));
 for (const p of readdirSync(FUNCTIONS).filter((f) => f.endsWith('.js'))) {
   const name = p.replace(/\.js$/, '');
-  const z = zip([{ name: p, data: readFileSync(join(FUNCTIONS, p)) }]);
+  const z = zip([{ name: p, data: readFileSync(join(FUNCTIONS, p)) }, ...extras]);
   const h = sha256(z);
   functions[name] = h;
   fnZips[h] = { name, z };

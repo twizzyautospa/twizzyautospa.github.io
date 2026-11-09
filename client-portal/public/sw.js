@@ -1,6 +1,6 @@
 // LeadThru Portal service worker: makes the app installable and quick to open.
 // Lead data (/api/*) is never cached, so what you see is always live.
-const CACHE = 'lt-portal-v1';
+const CACHE = 'lt-portal-v2';
 const SHELL = ['/', '/app.css', '/app.js', '/manifest.webmanifest', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {

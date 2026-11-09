@@ -55,15 +55,22 @@
 
 <!-- APP -->
 <div id="app" class="app" hidden>
-  <header class="top">
-    <div class="brand"><svg><use href="#i-mark"/></svg><span class="wm">Lead<span>Thru</span></span></div>
-    <div class="who" id="who"></div>
-    <select id="pipelinePick" class="pick" aria-label="Choose client" hidden></select>
-    <div class="top-actions">
-      <button class="icon-btn" id="refreshBtn" type="button" aria-label="Refresh"><svg><use href="#i-refresh"/></svg></button>
-      <button class="icon-btn" id="logoutBtn" type="button" aria-label="Sign out"><svg><use href="#i-out"/></svg></button>
+  <div class="topwrap">
+    <div class="lt-bar" id="ltBar" hidden>
+      <a class="by" href="https://leadthruagency.com" target="_blank" rel="noopener"><svg><use href="#i-mark"/></svg>Powered by <b>Lead<span>Thru</span></b></a>
+      <a class="help-link" href="sms:+16478830113">Need help? Text us</a>
     </div>
-  </header>
+    <header class="top">
+      <div class="brand" id="ltBrand"><svg><use href="#i-mark"/></svg><span class="wm">Lead<span>Thru</span></span></div>
+      <div class="client-brand" id="clientBrand" hidden><img id="clientLogo" alt=""><span id="clientName" hidden></span></div>
+      <div class="who" id="who"></div>
+      <select id="pipelinePick" class="pick" aria-label="Choose client" hidden></select>
+      <div class="top-actions">
+        <button class="icon-btn" id="refreshBtn" type="button" aria-label="Refresh"><svg><use href="#i-refresh"/></svg></button>
+        <button class="icon-btn" id="logoutBtn" type="button" aria-label="Sign out"><svg><use href="#i-out"/></svg></button>
+      </div>
+    </header>
+  </div>
 
   <section class="summary" id="summary"></section>
 
@@ -84,6 +91,14 @@
   <main class="board" id="board" aria-live="polite"></main>
 
   <p class="synced" id="synced"></p>
+
+  <footer class="lt-foot" id="ltFoot" hidden>
+    <div>
+      <div class="brand"><svg><use href="#i-mark"/></svg><span class="wm">Lead<span>Thru</span></span></div>
+      <p>Your ads, your leads and this portal are run by LeadThru.</p>
+    </div>
+    <a href="sms:+16478830113">Text LeadThru</a>
+  </footer>
 </div>
 
 <!-- LEAD SHEET -->

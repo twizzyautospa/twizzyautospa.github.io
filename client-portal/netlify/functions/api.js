@@ -25,6 +25,10 @@
 const crypto = require('crypto');
 const https = require('https');
 
+// Per-client branding (logo slug + colours), built by scripts/make-brand.py.
+let BRANDS = {};
+try { BRANDS = require('./brands.json'); } catch { /* no branding yet */ }
+
 const GHL_HOST = 'services.leadconnectorhq.com';
 const GHL_VERSION = '2021-07-28';
 const COOKIE = 'lt_session';
@@ -262,6 +266,7 @@ exports.handler = async (event) => {
       const list = await allowedPipelines(user);
       return reply(200, {
         user: { username: user.u, name: user.n, admin: !!user.admin },
+        brand: (!user.admin && BRANDS[user.u]) || null,
         pipelines: list.map((p) => ({ id: p.id, name: p.name })),
       });
     }

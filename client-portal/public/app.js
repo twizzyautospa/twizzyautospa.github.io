@@ -78,10 +78,94 @@
     return data;
   }
 
+  /* ---------------- client branding ---------------- */
+
+  const BRAND_VARS = ['--accent', '--accent-hi', '--accent-dim', '--accent-text', '--accent-soft', '--accent-soft-2', '--on-accent'];
+  const DEFAULT_HEAD = {
+    manifest: '/manifest.webmanifest', touch: '/icons/apple-touch-icon.png', icon: '/icons/icon-192.png',
+    title: 'LeadThru', doc: 'LeadThru Portal',
+  };
+
+  const rgb = (h) => {
+    let s = String(h).replace('#', '');
+    if (s.length === 3) s = s.split('').map((c) => c + c).join('');
+    const n = parseInt(s, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const hex = (c) => `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+  const lum = (c) => {
+    const f = (v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+    return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]);
+  };
+  const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const mix = (c, t, amt) => c.map((v, i) => Math.round(v + (t[i] - v) * amt));
+
+  // From one brand colour: readable text on it, a darker shade for text on white, soft tints.
+  function brandVars(color) {
+    const c = rgb(color);
+    const W = [255, 255, 255];
+    const K = [0, 0, 0];
+    const onAccent = contrast(c, W) >= contrast(c, K) ? '#FFFFFF' : '#141414';
+    let text = c;
+    for (let i = 0; i < 30 && contrast(text, W) < 4.5; i++) text = mix(text, K, 0.06);
+    const hi = lum(c) < 0.03 ? mix(c, W, 0.18) : mix(c, K, 0.12);
+    return {
+      '--accent': hex(c),
+      '--accent-hi': hex(hi),
+      '--accent-dim': hex(mix(c, W, 0.45)),
+      '--accent-text': hex(text),
+      '--accent-soft': `rgba(${c.join(',')},.09)`,
+      '--accent-soft-2': `rgba(${c.join(',')},.16)`,
+      '--on-accent': onAccent,
+    };
+  }
+
+  function setHead(h) {
+    $('link[rel="manifest"]').href = h.manifest;
+    $('link[rel="apple-touch-icon"]').href = h.touch;
+    $('link[rel="icon"]').href = h.icon;
+    $('meta[name="apple-mobile-web-app-title"]').content = h.title;
+    document.title = h.doc;
+  }
+
+  function applyBrand(b) {
+    const root = document.documentElement;
+    Object.entries(brandVars(b.color)).forEach(([k, v]) => root.style.setProperty(k, v));
+    root.classList.add('client-theme');
+    const base = `/brands/${encodeURIComponent(b.slug)}`;
+    const img = $('#clientLogo');
+    img.src = `${base}/logo.png`;
+    img.alt = b.name;
+    img.classList.toggle('wide', (b.logoRatio || 1) > 2.6);
+    $('#clientName').textContent = b.name;
+    $('#clientName').hidden = !b.showName;
+    $('#clientBrand').hidden = false;
+    $('#ltBrand').hidden = true;
+    $('#who').hidden = true;
+    $('#ltBar').hidden = false;
+    $('#ltFoot').hidden = false;
+    setHead({
+      manifest: `${base}/manifest.webmanifest`, touch: `${base}/apple-touch-icon.png`, icon: `${base}/icon-192.png`,
+      title: b.short, doc: `${b.name} · Leads`,
+    });
+  }
+
+  function clearBrand() {
+    const root = document.documentElement;
+    BRAND_VARS.forEach((k) => root.style.removeProperty(k));
+    root.classList.remove('client-theme');
+    $('#clientBrand').hidden = true;
+    $('#ltBrand').hidden = false;
+    $('#ltBar').hidden = true;
+    $('#ltFoot').hidden = true;
+    setHead(DEFAULT_HEAD);
+  }
+
   /* ---------------- login ---------------- */
 
   function showLogin() {
     state.me = null;
+    clearBrand();
     closeSheet();
     $('#app').hidden = true;
     $('#login').hidden = false;
@@ -138,6 +222,7 @@
       $('#who').hidden = false;
       pick.hidden = true;
     }
+    if (me.brand) applyBrand(me.brand); else clearBrand();
     $('#login').hidden = true;
     $('#app').hidden = false;
     $('#boot').hidden = true;
