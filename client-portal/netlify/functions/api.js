@@ -13,6 +13,9 @@
  *   GET  /api/clients                     (admin) list clients + pipelines
  *   POST /api/clients  {action:'save'|'remove', ...}   (admin) add / edit / remove a client
  *   GET  /api/asset/<slug>/<file>         client logo, app icons and manifest (public, random slug)
+ *   GET  /api/bookings?months=YYYY-MM,...[&pipeline=<id>]   portal calendar appointments
+ *   POST /api/bookings {action:'save'|'cancel', ...}         book / change / cancel an appointment
+ *   GET  /api/ics?t=<signed token>        one appointment as an .ics file (add to phone calendar)
  *   GET  /api/health
  *
  * Environment variables (set on the Netlify site, never in code):
@@ -270,6 +273,11 @@ const sessionCookie = (value, maxAgeSeconds) =>
 /* ---------------- GoHighLevel ---------------- */
 
 function ghl(method, p, body) {
+  // Local testing only: PORTAL_DRY_WRITES=1 reads real GHL data but skips every change.
+  if (process.env.PORTAL_DRY_WRITES && method !== 'GET') {
+    console.log(`[dry run] GHL ${method} ${p.split('?')[0]} ${body ? JSON.stringify(body).slice(0, 160) : ''}`);
+    return Promise.resolve({});
+  }
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
     const headers = {
@@ -475,6 +483,181 @@ async function removeClient(store, username) {
   }
 }
 
+/* ---------------- bookings (portal calendar, separate from GHL calendars) ----------------
+ * One record per appointment at "bk/<pipelineId>/<YYYY-MM of start, UTC>/<id>".
+ * Each booking also leaves a note on the GHL contact and tags new bookings
+ * "appointment booked", so GHL workflows can react to it.
+ */
+const MONTH_RE = /^\d{4}-\d{2}$/;
+const BK_ID_RE = /^[a-f0-9]{12}$/;
+const BOOKED_TAG = 'appointment booked';
+
+// Storage can lag after a write; this instance remembers its own recent writes for 5 minutes.
+const recentBookings = new Map();
+function noteRecentBooking(pid, id, rec) {
+  let m = recentBookings.get(pid);
+  if (!m) { m = new Map(); recentBookings.set(pid, m); }
+  m.set(id, { rec, at: Date.now() });
+}
+
+function safeTz(tz) {
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return tz; } catch { return 'America/Toronto'; }
+}
+
+function whenText(rec, tz) {
+  const zone = safeTz(tz || 'America/Toronto');
+  const day = new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(rec.start));
+  const t = (iso) => new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
+  return `${day}, ${t(rec.start)}–${t(rec.end)}`;
+}
+
+function icsToken(b) {
+  const payload = Buffer.from(JSON.stringify({
+    i: b.id, t: b.title, n: b.lead.name, p: b.lead.phone, a: b.address, s: b.start, e: b.end, d: (b.notes || '').slice(0, 300),
+  })).toString('base64url');
+  return `${payload}.${sign(`ics.${payload}`).slice(0, 24)}`;
+}
+
+function publicBooking(rec) {
+  return { ...rec, ics: `/api/ics?t=${icsToken(rec)}` };
+}
+
+function icsFile(token) {
+  const [payload, sig] = String(token || '').split('.');
+  if (!payload || !sig || sign(`ics.${payload}`).slice(0, 24) !== sig) throw new HttpError(404, 'Not found.');
+  const b = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+  const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\;');
+  const dt = (iso) => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const fold = (line) => {
+    const out = [];
+    for (let s = line; s.length; s = s.slice(73)) out.push((out.length ? ' ' : '') + s.slice(0, 73));
+    return out.join('\r\n');
+  };
+  const details = [b.p && `Phone: ${b.p}`, b.d].filter(Boolean).join('\n');
+  return [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//LeadThru//Client Portal//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${b.i}@portal.leadthruagency.com`,
+    `DTSTAMP:${dt(new Date().toISOString())}`,
+    `DTSTART:${dt(b.s)}`,
+    `DTEND:${dt(b.e)}`,
+    fold(`SUMMARY:${esc(`${b.t} · ${b.n}`)}`),
+    b.a ? fold(`LOCATION:${esc(b.a)}`) : null,
+    details ? fold(`DESCRIPTION:${esc(details)}`) : null,
+    'BEGIN:VALARM', 'TRIGGER:-PT1H', 'ACTION:DISPLAY', `DESCRIPTION:${esc(b.t)}`, 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR', '',
+  ].filter((l) => l !== null).join('\r\n');
+}
+
+async function bookingPipeline(user, wanted) {
+  const list = await allowedPipelines(user);
+  const p = user.admin ? list.find((x) => x.id === wanted) : list[0];
+  if (!p) throw new HttpError(404, 'No pipeline found.');
+  return p;
+}
+
+async function listBookings(store, pid, months) {
+  const out = new Map();
+  if (store) {
+    await Promise.all(months.map(async (m) => {
+      const keys = await store.list(`bk/${pid}/${m}/`);
+      const recs = await Promise.all(keys.map((k) => store.get(k, { type: 'json' }).catch(() => null)));
+      for (const r of recs) if (r && r.id) out.set(r.id, r);
+    }));
+  }
+  const recent = recentBookings.get(pid);
+  if (recent) {
+    for (const [id, x] of recent) {
+      if (Date.now() - x.at > 5 * 60e3) { recent.delete(id); continue; }
+      if (x.rec && months.includes(x.rec.month)) out.set(id, x.rec); else out.delete(id);
+    }
+  }
+  return [...out.values()].sort((a, b) => a.start.localeCompare(b.start)).map(publicBooking);
+}
+
+// GHL side effects are best effort: the booking is saved even if GHL is briefly unavailable.
+async function ghlNote(contactId, text) {
+  if (!contactId) return true;
+  try { await ghl('POST', `/contacts/${enc(contactId)}/notes`, { body: text }); return true; } catch { return false; }
+}
+
+async function saveBooking(store, user, body) {
+  const o = await loadOpportunity(user, body.oppId);
+  const pid = o.pipelineId;
+  const start = new Date(body.start);
+  if (Number.isNaN(start.getTime())) throw new HttpError(400, 'Pick a date and time.');
+  if (Math.abs(start.getTime() - Date.now()) > 2 * 365 * 864e5) throw new HttpError(400, 'Pick a date within the next two years.');
+  const minutes = Math.round(Number(body.minutes));
+  if (!(minutes >= 15 && minutes <= 720)) throw new HttpError(400, 'Pick how long it takes.');
+  const isNew = !body.id;
+  if (!isNew && (!BK_ID_RE.test(String(body.id)) || !MONTH_RE.test(String(body.month || '')))) throw new HttpError(400, 'Unknown appointment.');
+  const moveStage = !!body.stageId && body.stageId !== o.pipelineStageId;
+  if (moveStage) {
+    const p = (await pipelines()).find((x) => x.id === pid);
+    if (!p || !p.stages.some((st) => st.id === body.stageId)) throw new HttpError(400, 'Unknown stage.');
+  }
+  const id = isNew ? crypto.randomBytes(6).toString('hex') : body.id;
+  const month = start.toISOString().slice(0, 7);
+  const now = new Date().toISOString();
+
+  let prev = null;
+  if (!isNew) {
+    const r = recentBookings.get(pid);
+    prev = (r && r.get(id) && r.get(id).rec) || await store.get(`bk/${pid}/${body.month}/${id}`, { type: 'json' }).catch(() => null);
+  }
+  const c = o.contact || {};
+  const rec = {
+    id,
+    pipelineId: pid,
+    month,
+    oppId: o.id,
+    contactId: o.contactId || c.id || null,
+    lead: { name: slim(o).name, phone: c.phone || '', email: c.email || '' },
+    title: String(body.title || '').trim().slice(0, 60) || 'Appointment',
+    start: start.toISOString(),
+    end: new Date(start.getTime() + minutes * 60e3).toISOString(),
+    minutes,
+    address: String(body.address || '').trim().slice(0, 200),
+    notes: String(body.notes || '').trim().slice(0, 1000),
+    createdBy: (prev && prev.createdBy) || user.u,
+    createdAt: (prev && prev.createdAt) || now,
+    updatedAt: now,
+  };
+  await store.setJSON(`bk/${pid}/${month}/${id}`, rec);
+  if (!isNew && body.month !== month) await store.delete(`bk/${pid}/${body.month}/${id}`).catch(() => {});
+  noteRecentBooking(pid, id, rec);
+
+  let opportunity = null;
+  let stageFailed = false;
+  if (moveStage) {
+    try {
+      const r = await ghl('PUT', `/opportunities/${enc(o.id)}`, { pipelineId: pid, pipelineStageId: body.stageId });
+      opportunity = slim({ ...o, ...(r.opportunity || {}), pipelineStageId: body.stageId, contact: o.contact, lastStageChangeAt: now });
+    } catch { stageFailed = true; }
+  }
+
+  const text = `[Portal · ${user.n}] ${isNew ? 'Booked' : 'Appointment changed'}: ${rec.title} on ${whenText(rec, body.tz)}`
+    + `${rec.address ? ` at ${rec.address}` : ''}${rec.notes ? `. Notes: ${rec.notes}` : ''}`;
+  let synced = await ghlNote(rec.contactId, text);
+  if (isNew && rec.contactId) {
+    try { await ghl('POST', `/contacts/${enc(rec.contactId)}/tags`, { tags: [BOOKED_TAG] }); } catch { synced = false; }
+  }
+  return { booking: publicBooking(rec), opportunity, synced, stageFailed };
+}
+
+async function cancelBooking(store, user, body) {
+  const o = await loadOpportunity(user, body.oppId);
+  const pid = o.pipelineId;
+  if (!BK_ID_RE.test(String(body.id)) || !MONTH_RE.test(String(body.month || ''))) throw new HttpError(400, 'Unknown appointment.');
+  const key = `bk/${pid}/${body.month}/${body.id}`;
+  const r = recentBookings.get(pid);
+  const rec = (r && r.get(body.id) && r.get(body.id).rec) || await store.get(key, { type: 'json' }).catch(() => null);
+  await store.delete(key);
+  noteRecentBooking(pid, body.id, null);
+  const synced = await ghlNote(o.contactId, `[Portal · ${user.n}] Appointment cancelled${rec ? `: ${rec.title} on ${whenText(rec, body.tz)}` : ''}`);
+  return { cancelled: body.id, synced };
+}
+
 /* ---------------- HTTP plumbing ---------------- */
 
 function reply(status, body, extraHeaders) {
@@ -569,6 +752,18 @@ exports.handler = async (event) => {
       return reply(200, { ok: true, node: process.version, storage: store ? store.mode : 'none' });
     }
 
+    if (route === 'ics' && method === 'GET') {
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'text/calendar; charset=utf-8',
+          'Content-Disposition': 'inline; filename="appointment.ics"',
+          'Cache-Control': 'private, max-age=300',
+        },
+        body: icsFile(q.t),
+      };
+    }
+
     if (route === 'asset' && method === 'GET' && parts.length === 3) {
       return await serveAsset(store, parts[1], parts[2]);
     }
@@ -653,6 +848,21 @@ exports.handler = async (event) => {
       const r = await ghl('POST', `/contacts/${enc(o.contactId)}/notes`, { body: `[Portal · ${user.n}] ${text}` });
       const n = r.note || {};
       return reply(200, { note: { id: n.id, body: n.body || text, at: n.dateAdded || new Date().toISOString() } });
+    }
+
+    if (route === 'bookings' && method === 'GET') {
+      const p = await bookingPipeline(user, q.pipeline);
+      const months = [...new Set(String(q.months || '').split(',').filter((m) => MONTH_RE.test(m)))].slice(0, 8);
+      if (!months.length) throw new HttpError(400, 'Pick a month.');
+      return reply(200, { pipelineId: p.id, months, bookings: await listBookings(store, p.id, months) });
+    }
+
+    if (route === 'bookings' && method === 'POST') {
+      if (!store) throw new HttpError(503, 'Calendar storage is not available right now.');
+      const body = parseBody(event);
+      if (body.action === 'save') return reply(200, await saveBooking(store, user, body));
+      if (body.action === 'cancel') return reply(200, await cancelBooking(store, user, body));
+      throw new HttpError(400, 'Unknown action.');
     }
 
     if (route === 'clients') {

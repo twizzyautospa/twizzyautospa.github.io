@@ -22,6 +22,24 @@ phone / browser ──► public/ (static app) ──► /api/* ──► netlif
 - Clients can: move stage, set a job value, add notes (saved on the GHL contact, prefixed
   `[Portal · Client Name]`), and tap to call / text / email.
 
+## Calendar (booked appointments)
+
+Every login has a **Leads | Calendar** switch. The calendar is the portal's own (not a GHL calendar):
+
+- **Book from a lead**: open a lead → *Book appointment* (right under the stage buttons). Pick what
+  (Estimate, Job, Follow-up, Site visit or anything typed), date, start time, length, address and notes,
+  and optionally move the lead to a new stage in the same step.
+- **Book from the calendar**: *+ Book* (or *Book this day*) and choose the lead.
+- **Calendar view**: month grid with dots on booked days, the selected day's appointments, and what's coming up.
+  Lead cards show their next appointment; the Calendar tab shows how many are in the next 7 days.
+- **Add to phone calendar**: every appointment has *Apple / Outlook* (an `.ics` file from `/api/ics`, with a
+  1-hour reminder) and *Google* buttons. Change or cancel from the same screen.
+- **GHL side**: each booking, change and cancellation adds a note on the GHL contact
+  (`[Portal · Client] Booked: Job on Thu, Nov 12, 10:00 AM–12:00 PM at …`), and new bookings add the tag
+  `appointment booked`, so a GHL workflow can start from "Tag added: appointment booked".
+- Stored in Netlify Blobs at `bk/<pipelineId>/<YYYY-MM>/<id>`; the browser and the function both remember
+  their own recent changes, so storage sync delay is not visible to the person making the change.
+
 ## Managing clients (no code, no redeploy)
 
 Log in as the admin (`leadthru`) and tap the **people icon** in the top bar to open **Clients**:
@@ -88,4 +106,5 @@ PORTAL_LOCAL_STORE=./.local-store GHL_TOKEN=... GHL_LOCATION_ID=... SESSION_SECR
 # open http://localhost:8888
 ```
 
-`PORTAL_LOCAL_STORE` keeps clients and logos in a local folder instead of Netlify Blobs.
+`PORTAL_LOCAL_STORE` keeps clients, logos and bookings in a local folder instead of Netlify Blobs.
+Add `PORTAL_DRY_WRITES=1` to read real GHL data but skip every change to GHL (stage moves, notes, tags).

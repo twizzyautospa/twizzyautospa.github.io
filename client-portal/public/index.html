@@ -35,6 +35,9 @@
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v4h16v-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><path d="M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1ZM4 10h16M8 3v4M16 3v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4M6 11H5v9h14v-9h-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 </svg>
 
@@ -77,6 +80,11 @@
     </header>
   </div>
 
+  <nav class="tabs" id="tabs" aria-label="Sections">
+    <button type="button" data-view="leads" class="on">Leads</button>
+    <button type="button" data-view="calendar"><svg><use href="#i-cal"/></svg>Calendar <span class="tab-c" id="calCount" hidden></span></button>
+  </nav>
+
   <div id="leadsView">
   <section class="summary" id="summary"></section>
 
@@ -98,6 +106,8 @@
 
   <p class="synced" id="synced"></p>
   </div>
+
+  <section class="cal-view" id="calView" hidden></section>
 
   <section class="clients-view" id="clientsView" hidden></section>
 
@@ -123,6 +133,14 @@
   <div class="grab" aria-hidden="true"></div>
   <button class="icon-btn close" id="editorClose" type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
   <div class="sheet-body" id="editorBody"></div>
+</aside>
+
+<!-- APPOINTMENT (book / view) -->
+<div class="scrim bk-scrim" id="bkScrim" hidden></div>
+<aside class="sheet booker" id="booker" role="dialog" aria-modal="true" aria-labelledby="bookerTitle" hidden>
+  <div class="grab" aria-hidden="true"></div>
+  <button class="icon-btn close" id="bookerClose" type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+  <div class="sheet-body" id="bookerBody"></div>
 </aside>
 
 <div class="toast" id="toast" role="status" hidden></div>

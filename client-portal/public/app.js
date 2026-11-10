@@ -14,7 +14,14 @@
     notes: {},
     loading: false,
     lastFetch: 0,
+    view: 'leads',
+    bk: { pid: null, months: new Set(), map: new Map() },   // portal calendar bookings by id
+    cal: { month: null, day: null },
   };
+
+  // Closing a panel with its X/scrim steps browser history back; ignore the popstate that causes.
+  let skipPop = 0;
+  const backQuietly = () => { skipPop++; history.back(); };
 
   /* ---------------- helpers ---------------- */
 
@@ -178,6 +185,8 @@
     clearBrand();
     closeSheet();
     closeEditor();
+    closeBooker();
+    state.bk = { pid: null, months: new Set(), map: new Map() };
     $('#clientsBtn').hidden = true;
     $('#app').hidden = true;
     $('#login').hidden = false;
@@ -257,6 +266,7 @@
       const stages = data.pipeline.stages;
       if (!stages.some((s) => s.id === state.stage)) state.stage = (stages[0] || {}).id || null;
       render();
+      loadBookings(true);
     } catch (ex) {
       if (!state.me) return;
       if (!state.board) {
@@ -274,6 +284,7 @@
     store.set('lt_pipe', state.pipelineId);
     state.board = null;
     state.stage = null;
+    state.bk = { pid: null, months: new Set(), map: new Map() };
     $('#board').innerHTML = '';
     $('#chips').innerHTML = '';
     $('#summary').innerHTML = '';
@@ -282,10 +293,10 @@
 
   // Keep it live: refresh every minute while open, and when coming back to the app.
   setInterval(() => {
-    if (state.me && !state.openId && state.view !== 'clients' && document.visibilityState === 'visible') loadBoard(true);
+    if (state.me && !state.openId && !booker.open && state.view !== 'clients' && document.visibilityState === 'visible') loadBoard(true);
   }, 60e3);
   document.addEventListener('visibilitychange', () => {
-    if (state.me && document.visibilityState === 'visible' && Date.now() - state.lastFetch > 20e3 && !state.openId && state.view !== 'clients') loadBoard(true);
+    if (state.me && document.visibilityState === 'visible' && Date.now() - state.lastFetch > 20e3 && !state.openId && !booker.open && state.view !== 'clients') loadBoard(true);
   });
 
   /* ---------------- render ---------------- */
@@ -312,6 +323,7 @@
       o.contact.phone && `<span>${esc(phonePretty(o.contact.phone))}</span>`,
       `<span>${esc(ago(o.createdAt))}</span>`,
       o.value > 0 && `<span class="val">${esc(money(o.value))}</span>`,
+      nextBooking(o.id) && `<span class="bk">${icon('cal')}${esc(shortWhen(nextBooking(o.id)))}</span>`,
     ].filter(Boolean).join('');
     const call = o.contact.phone
       ? `<a class="call" href="tel:${esc(o.contact.phone)}" aria-label="Call ${esc(o.name)}" data-stop>${icon('phone')}</a>` : '';
@@ -489,7 +501,7 @@
     state.openId = null;
     $('#scrim').hidden = true;
     $('#sheet').hidden = true;
-    if (fromPop !== true && history.state && history.state.sheet) history.back();
+    if (fromPop !== true && history.state && history.state.sheet) backQuietly();
   }
 
   function renderSheet(full) {
@@ -508,6 +520,7 @@
       // Light refresh: keep what the person is typing in value/notes.
       $('#sheetStages').innerHTML = stageButtons;
       $('#sheetSub').textContent = subLine(o, stage);
+      renderSheetBookings(o);
       return;
     }
 
@@ -521,7 +534,8 @@
       </div>
       ${(c.phone || c.email) ? `<p class="contact-line">${esc([phonePretty(c.phone), c.email].filter(Boolean).join(' · '))}</p>` : ''}
 
-      <div class="sec"><h3>Move to stage</h3><div class="stages" id="sheetStages">${stageButtons}</div></div>
+      <div class="sec"><h3>Move to stage</h3><div class="stages" id="sheetStages">${stageButtons}</div>
+        <div class="sheet-bk" id="sheetBk"></div></div>
 
       <div class="sec"><h3>Job value</h3>
         <form class="money" id="valueForm">
@@ -547,6 +561,15 @@
         </dl>
       </div>`;
     renderNotes(o.id);
+    renderSheetBookings(o);
+  }
+
+  function renderSheetBookings(o) {
+    const box = $('#sheetBk');
+    if (!box || !o || !o.id) return;
+    const list = bookingsFor(o.id);
+    box.innerHTML = list.map((b) => bkCard(b, true)).join('')
+      + `<button class="btn sm book-btn" type="button" data-book="${esc(o.id)}">${icon('cal')}${list.length ? 'Book another appointment' : 'Book appointment'}</button>`;
   }
 
   function subLine(o, stage) {
@@ -554,8 +577,13 @@
   }
 
   $('#sheetBody').addEventListener('click', (e) => {
+    if (e.target.closest('[data-stop]')) return;
     const b = e.target.closest('[data-move]');
-    if (b && state.openId) moveTo(state.openId, b.dataset.move);
+    if (b && state.openId) { moveTo(state.openId, b.dataset.move); return; }
+    const book = e.target.closest('[data-book]');
+    if (book) { openBookingForm({ oppId: book.dataset.book, lockLead: true }); return; }
+    const card = e.target.closest('[data-bk]');
+    if (card) openBookingView(card.dataset.bk);
   });
   $('#sheetBody').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -581,9 +609,424 @@
     }
   });
   $('#sheetClose').addEventListener('click', closeSheet);
+  function closeTop(fromPop) {
+    if (booker.open) closeBooker(fromPop);
+    else if (editor.open) closeEditor(fromPop);
+    else closeSheet(fromPop);
+  }
   $('#scrim').addEventListener('click', () => (editor.open ? closeEditor() : closeSheet()));
-  window.addEventListener('popstate', () => (editor.open ? closeEditor(true) : closeSheet(true)));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (editor.open) closeEditor(); else closeSheet(); } });
+  window.addEventListener('popstate', () => { if (skipPop) { skipPop--; return; } closeTop(true); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTop(); });
+
+  /* ---------------- calendar: booked appointments ---------------- */
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const dayKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const fromDayKey = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
+  const utcMonth = (y, m) => new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 7);
+  const fmtDay = (d) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  const fmtDayLong = (d) => d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  const fmtTime = (d) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const fmtLen = (m) => (m >= 60 ? `${Number.isInteger(m / 60) ? m / 60 : (m / 60).toFixed(1)}h` : `${m}m`);
+  const tz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ''; } };
+  const LENGTHS = [[30, '30 min'], [60, '1 hour'], [90, '1.5 hours'], [120, '2 hours'], [180, '3 hours'], [240, '4 hours'], [480, 'Full day']];
+  const KINDS = ['Estimate', 'Job', 'Follow-up', 'Site visit'];
+
+  function shortWhen(b) {
+    const d = new Date(b.start);
+    const today = dayKey(new Date());
+    const tomorrow = dayKey(new Date(Date.now() + 864e5));
+    const k = dayKey(d);
+    const day = k === today ? 'Today' : k === tomorrow ? 'Tomorrow' : fmtDay(d);
+    return `${day} ${fmtTime(d)}`;
+  }
+
+  const allBookings = () => [...state.bk.map.values()].sort((a, b) => a.start.localeCompare(b.start));
+  const bookingsFor = (oppId) => allBookings().filter((b) => b.oppId === oppId && new Date(b.end) > new Date(Date.now() - 864e5));
+  const nextBooking = (oppId) => allBookings().find((b) => b.oppId === oppId && new Date(b.end) > new Date());
+
+  // This device's own recent changes, laid over what the server lists (storage can lag a few minutes).
+  const bkKey = (pid) => `lt_bk_${pid}`;
+  function bkPending(pid) {
+    try { return JSON.parse(localStorage.getItem(bkKey(pid)) || '[]').filter((x) => Date.now() - x.at < 10 * 60e3); } catch { return []; }
+  }
+  function rememberBooking(pid, id, rec) {
+    const list = bkPending(pid).filter((x) => x.id !== id);
+    list.push({ id, rec, at: Date.now() });
+    try { localStorage.setItem(bkKey(pid), JSON.stringify(list)); } catch { /* private mode */ }
+  }
+
+  function neededMonths() {
+    const set = new Set();
+    const now = new Date();
+    for (let k = -1; k <= 2; k++) set.add(utcMonth(now.getFullYear(), now.getMonth() + k));
+    const cm = state.cal.month || now;
+    for (let k = -1; k <= 1; k++) set.add(utcMonth(cm.getFullYear(), cm.getMonth() + k));
+    return [...set];
+  }
+
+  async function loadBookings(force) {
+    const pid = state.board && state.board.pipeline.id;
+    if (!pid) return;
+    if (state.bk.pid !== pid) state.bk = { pid, months: new Set(), map: new Map() };
+    const want = neededMonths().filter((m) => force || !state.bk.months.has(m));
+    if (want.length) {
+      try {
+        const q = `bookings?months=${want.join(',')}${state.me.admin ? `&pipeline=${encodeURIComponent(pid)}` : ''}`;
+        const r = await api(q);
+        if (state.bk.pid !== pid) return;
+        for (const [id, b] of state.bk.map) if (want.includes(b.month)) state.bk.map.delete(id);
+        for (const b of r.bookings) state.bk.map.set(b.id, b);
+        want.forEach((m) => state.bk.months.add(m));
+      } catch (ex) {
+        if (state.view === 'calendar' && !force) toast(ex.message, true);
+      }
+    }
+    for (const x of bkPending(pid)) { if (x.rec) state.bk.map.set(x.id, x.rec); else state.bk.map.delete(x.id); }
+    afterBookingsChange();
+  }
+
+  function afterBookingsChange() {
+    const now = Date.now();
+    const soon = allBookings().filter((b) => new Date(b.end) > now && new Date(b.start) - now < 7 * 864e5).length;
+    const c = $('#calCount');
+    c.textContent = soon;
+    c.hidden = !soon;
+    if (state.view === 'calendar') renderCalendar();
+    if (state.board && state.view === 'leads') render();
+    else if (state.openId) renderSheetBookings(findOpp(state.openId) || {});
+    if (booker.open && booker.mode === 'view') renderBookingView();
+  }
+
+  function bkCard(b, withDate) {
+    const s = new Date(b.start);
+    const past = new Date(b.end) < new Date();
+    const where = b.address || phonePretty(b.lead.phone);
+    return `<div class="bk-card${past ? ' past' : ''}" role="button" tabindex="0" data-bk="${esc(b.id)}">
+      <div class="bk-time"><b>${esc(fmtTime(s))}</b><span>${esc(withDate ? fmtDay(s) : fmtLen(b.minutes))}</span></div>
+      <div class="bk-main"><div class="bk-title">${esc(b.title)} · ${esc(b.lead.name)}</div>
+        <div class="bk-meta">${esc([withDate ? fmtLen(b.minutes) : '', where].filter(Boolean).join(' · '))}</div></div>
+      ${b.lead.phone ? `<a class="call" href="tel:${esc(b.lead.phone)}" aria-label="Call ${esc(b.lead.name)}" data-stop>${icon('phone')}</a>` : ''}
+    </div>`;
+  }
+
+  function renderCalendar() {
+    const now = new Date();
+    if (!state.cal.month) state.cal.month = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (!state.cal.day) state.cal.day = dayKey(now);
+    const m = state.cal.month;
+    const today = dayKey(now);
+    const byDay = new Map();
+    for (const b of allBookings()) {
+      const k = dayKey(new Date(b.start));
+      if (!byDay.has(k)) byDay.set(k, []);
+      byDay.get(k).push(b);
+    }
+    const lead = new Date(m.getFullYear(), m.getMonth(), 1).getDay();
+    const days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+    const wd = Array.from({ length: 7 }, (_, i) => new Date(2026, 10, 1 + i).toLocaleDateString(undefined, { weekday: 'narrow' }));
+    let cells = '<span class="cal-blank"></span>'.repeat(lead);
+    for (let d = 1; d <= days; d++) {
+      const k = dayKey(new Date(m.getFullYear(), m.getMonth(), d));
+      const n = (byDay.get(k) || []).length;
+      const cls = ['cal-day', k === today && 'today', k === state.cal.day && 'sel', k < today && 'past'].filter(Boolean).join(' ');
+      cells += `<button type="button" class="${cls}" data-day="${k}" aria-label="${esc(fmtDayLong(fromDayKey(k)))}${n ? `, ${n} booked` : ''}">
+        ${d}<span class="dots">${'<i></i>'.repeat(Math.min(n, 3))}</span></button>`;
+    }
+    const sel = fromDayKey(state.cal.day);
+    const dayList = byDay.get(state.cal.day) || [];
+    const after = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate() + 1);
+    const upcoming = allBookings().filter((b) => new Date(b.start) >= after && new Date(b.start) >= now).slice(0, 8);
+    const thisMonth = m.getFullYear() === now.getFullYear() && m.getMonth() === now.getMonth();
+    $('#calView').innerHTML = `
+      <div class="cal-top">
+        <div class="cal-nav">
+          <button class="icon-btn prev" type="button" data-cal="prev" aria-label="Previous month">${icon('next')}</button>
+          <h2>${esc(m.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))}</h2>
+          <button class="icon-btn" type="button" data-cal="next" aria-label="Next month">${icon('next')}</button>
+        </div>
+        <button class="btn sm" type="button" data-cal="book">${icon('plus')}Book</button>
+      </div>
+      <div class="cal-layout">
+        <div class="cal-month">
+          <div class="cal-wd">${wd.map((x) => `<span>${esc(x)}</span>`).join('')}</div>
+          <div class="cal-grid">${cells}</div>
+          ${thisMonth && state.cal.day === today ? '' : '<button class="cal-today" type="button" data-cal="today">Back to today</button>'}
+        </div>
+        <div class="cal-agenda">
+          <h3>${state.cal.day === today ? 'Today · ' : ''}${esc(fmtDayLong(sel))}</h3>
+          <div class="bk-list">${dayList.length ? dayList.map((b) => bkCard(b)).join('')
+            : `<div class="bk-empty">Nothing booked${state.cal.day < today ? '' : `<button class="btn sm ghost" type="button" data-cal="bookday">${icon('plus')}Book this day</button>`}</div>`}</div>
+          <h3>Coming up</h3>
+          <div class="bk-list">${upcoming.length ? upcoming.map((b) => bkCard(b, true)).join('')
+            : '<div class="bk-empty">No other appointments booked yet.</div>'}</div>
+        </div>
+      </div>`;
+  }
+
+  $('#tabs').addEventListener('click', (e) => {
+    const bt = e.target.closest('button[data-view]');
+    if (bt && bt.dataset.view !== state.view) showView(bt.dataset.view);
+  });
+
+  $('#calView').addEventListener('click', (e) => {
+    if (e.target.closest('[data-stop]')) return;
+    const act = e.target.closest('[data-cal]');
+    if (act) {
+      const m = state.cal.month;
+      const a = act.dataset.cal;
+      if (a === 'prev' || a === 'next') {
+        state.cal.month = new Date(m.getFullYear(), m.getMonth() + (a === 'next' ? 1 : -1), 1);
+        renderCalendar();
+        loadBookings();
+      } else if (a === 'today') {
+        const n = new Date();
+        state.cal.month = new Date(n.getFullYear(), n.getMonth(), 1);
+        state.cal.day = dayKey(n);
+        renderCalendar();
+      } else if (a === 'book') {
+        openBookingForm({ day: state.cal.day >= dayKey(new Date()) ? state.cal.day : null });
+      } else if (a === 'bookday') {
+        openBookingForm({ day: state.cal.day });
+      }
+      return;
+    }
+    const day = e.target.closest('[data-day]');
+    if (day) { state.cal.day = day.dataset.day; renderCalendar(); return; }
+    const card = e.target.closest('[data-bk]');
+    if (card) openBookingView(card.dataset.bk);
+  });
+  $('#calView').addEventListener('keydown', (e) => {
+    const card = e.target.closest('[data-bk]');
+    if (card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openBookingView(card.dataset.bk); }
+  });
+
+  /* ---- booking panel: book / view / edit / cancel ---- */
+
+  const booker = { open: false, mode: null, draft: null, id: null, busy: false, fresh: false };
+
+  function showBooker() {
+    booker.open = true;
+    $('#bkScrim').hidden = false;
+    $('#booker').hidden = false;
+    $('#booker').scrollTop = 0;
+    if (!(history.state && history.state.booker)) history.pushState({ booker: 1 }, '');
+  }
+
+  function closeBooker(fromPop) {
+    if (!booker.open) return;
+    booker.open = false;
+    booker.draft = null;
+    $('#bkScrim').hidden = true;
+    $('#booker').hidden = true;
+    if (fromPop !== true && history.state && history.state.booker) backQuietly();
+  }
+  $('#bookerClose').addEventListener('click', () => closeBooker());
+  $('#bkScrim').addEventListener('click', () => closeBooker());
+
+  function openBookingForm({ oppId = '', lockLead = false, day = null, edit = null } = {}) {
+    if (!state.board) return;
+    const tomorrow = dayKey(new Date(Date.now() + 864e5));
+    let draft;
+    if (edit) {
+      const s = new Date(edit.start);
+      draft = {
+        id: edit.id, month: edit.month, oppId: edit.oppId, lockLead: true, title: edit.title,
+        date: dayKey(s), time: `${pad2(s.getHours())}:${pad2(s.getMinutes())}`, minutes: edit.minutes,
+        address: edit.address, notes: edit.notes, stageId: '',
+      };
+    } else {
+      draft = {
+        id: null, month: null, oppId, lockLead, title: 'Estimate', date: day || tomorrow, time: '09:00',
+        minutes: 60, address: '', notes: '', stageId: '',
+      };
+    }
+    booker.mode = 'form';
+    booker.draft = draft;
+    renderBookingForm();
+    showBooker();
+  }
+
+  function renderBookingForm() {
+    const dr = booker.draft;
+    const o = dr.oppId ? findOpp(dr.oppId) : null;
+    const stages = state.board.pipeline.stages;
+    const cur = o && stages.find((s) => s.id === o.stageId);
+    const leads = state.board.opportunities.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const lenOpts = LENGTHS.some(([v]) => v === dr.minutes) ? LENGTHS : [...LENGTHS, [dr.minutes, fmtLen(dr.minutes)]];
+    $('#bookerBody').innerHTML = `
+      <h2 id="bookerTitle">${dr.id ? 'Edit appointment' : 'Book appointment'}</h2>
+      <p class="sub">${o && dr.lockLead ? esc(o.name) : 'Pick the lead, then the time.'}</p>
+      <form class="cf" id="bkForm" novalidate>
+        ${dr.lockLead && o ? '' : `<label class="field"><span>Lead</span><select id="bkLead">
+          <option value="">Choose a lead…</option>${leads.map((l) => `<option value="${esc(l.id)}"${l.id === dr.oppId ? ' selected' : ''}>${
+            esc(l.name)}${l.contact.phone ? ` · ${esc(phonePretty(l.contact.phone))}` : ''}</option>`).join('')}</select></label>`}
+        <div class="field"><span>What</span>
+          <div class="quick">${KINDS.map((k) => `<button type="button" class="qchip${k === dr.title ? ' on' : ''}" data-kind="${esc(k)}">${esc(k)}</button>`).join('')}</div>
+          <input id="bkTitle" maxlength="60" value="${esc(dr.title)}" aria-label="What is booked"></div>
+        <div class="row2">
+          <label class="field"><span>Date</span><input id="bkDate" type="date" value="${esc(dr.date)}" required></label>
+          <label class="field"><span>Start time</span><input id="bkTime" type="time" step="900" value="${esc(dr.time)}" required></label>
+        </div>
+        <label class="field"><span>How long</span><select id="bkLen">${lenOpts.map(([v, l]) => `<option value="${v}"${v === dr.minutes ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+        <label class="field"><span>Address</span><input id="bkAddr" maxlength="200" autocomplete="street-address" value="${esc(dr.address)}" placeholder="Job address (optional)"></label>
+        <label class="field"><span>Notes</span><textarea id="bkNotes" maxlength="1000" placeholder="Gate code, what to bring, who to ask for…">${esc(dr.notes)}</textarea></label>
+        <label class="field"><span>Move lead to</span><select id="bkStage">
+          <option value="">${cur ? `Keep in ${esc(cur.name)}` : 'Keep the current stage'}</option>
+          ${stages.filter((s) => !o || s.id !== o.stageId).map((s) => `<option value="${esc(s.id)}"${s.id === dr.stageId ? ' selected' : ''}>${esc(s.name)}</option>`).join('')}
+        </select><span class="hint">Optional: update their stage in the same step.</span></label>
+        <p class="err" id="bkErr" hidden></p>
+        <button class="btn" type="submit" id="bkSave">${dr.id ? 'Save changes' : 'Book appointment'}</button>
+      </form>`;
+  }
+
+  $('#bookerBody').addEventListener('input', (e) => {
+    const dr = booker.draft;
+    if (!dr || booker.mode !== 'form') return;
+    const v = e.target.value;
+    switch (e.target.id) {
+      case 'bkTitle':
+        dr.title = v;
+        document.querySelectorAll('.qchip').forEach((q) => q.classList.toggle('on', q.dataset.kind === v.trim()));
+        break;
+      case 'bkDate': dr.date = v; break;
+      case 'bkTime': dr.time = v; break;
+      case 'bkAddr': dr.address = v; break;
+      case 'bkNotes': dr.notes = v; break;
+      default: break;
+    }
+  });
+  $('#bookerBody').addEventListener('change', (e) => {
+    const dr = booker.draft;
+    if (!dr || booker.mode !== 'form') return;
+    if (e.target.id === 'bkLead') { dr.oppId = e.target.value; dr.stageId = ''; renderBookingForm(); }
+    if (e.target.id === 'bkLen') dr.minutes = Number(e.target.value);
+    if (e.target.id === 'bkStage') dr.stageId = e.target.value;
+  });
+
+  $('#bookerBody').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const dr = booker.draft;
+    if (!dr || booker.busy) return;
+    const err = $('#bkErr');
+    const fail = (m) => { err.textContent = m; err.hidden = false; };
+    err.hidden = true;
+    if (!dr.oppId) return fail('Choose which lead this is for.');
+    if (!dr.date || !dr.time) return fail('Pick a date and a start time.');
+    const start = new Date(`${dr.date}T${dr.time}`);
+    if (Number.isNaN(start.getTime())) return fail('That date or time does not look right.');
+    const btn = $('#bkSave');
+    booker.busy = true;
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+      const pid = state.board.pipeline.id;
+      const r = await api('bookings', {
+        action: 'save', id: dr.id || undefined, month: dr.month || undefined, oppId: dr.oppId, start: start.toISOString(),
+        minutes: dr.minutes, title: dr.title.trim() || 'Appointment', address: dr.address.trim(), notes: dr.notes.trim(),
+        stageId: dr.stageId || undefined, tz: tz(),
+      });
+      state.bk.map.set(r.booking.id, r.booking);
+      rememberBooking(pid, r.booking.id, r.booking);
+      if (r.opportunity) {
+        const o = findOpp(dr.oppId);
+        if (o) Object.assign(o, { stageId: r.opportunity.stageId, stageChangedAt: new Date().toISOString() });
+      }
+      const stageName = r.opportunity && (state.board.pipeline.stages.find((s) => s.id === r.opportunity.stageId) || {}).name;
+      toast(`${dr.id ? 'Updated' : 'Booked'}: ${shortWhen(r.booking)}${stageName ? ` · moved to ${stageName}` : ''}`
+        + (r.stageFailed ? ' (stage not updated, try again)' : ''), !!r.stageFailed);
+      booker.fresh = !dr.id;
+      openBookingView(r.booking.id, true);
+      afterBookingsChange();
+    } catch (ex) {
+      fail(ex.message);
+    } finally {
+      booker.busy = false;
+      if (booker.mode === 'form' && $('#bkSave')) { $('#bkSave').disabled = false; $('#bkSave').textContent = dr.id ? 'Save changes' : 'Book appointment'; }
+    }
+  });
+
+  const gcalDate = (iso) => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  function googleLink(b) {
+    const details = [b.lead.phone && `Phone: ${phonePretty(b.lead.phone)}`, b.notes].filter(Boolean).join('\n');
+    const p = new URLSearchParams({
+      action: 'TEMPLATE', text: `${b.title} · ${b.lead.name}`, dates: `${gcalDate(b.start)}/${gcalDate(b.end)}`, details, location: b.address || '',
+    });
+    return `https://calendar.google.com/calendar/render?${p}`;
+  }
+
+  function openBookingView(id, keep) {
+    if (!state.bk.map.has(id)) return;
+    if (!keep) booker.fresh = false;
+    booker.mode = 'view';
+    booker.id = id;
+    renderBookingView();
+    if (!booker.open) showBooker(); else $('#booker').scrollTop = 0;
+  }
+
+  function renderBookingView() {
+    const b = state.bk.map.get(booker.id);
+    if (!b) { closeBooker(); return; }
+    const s = new Date(b.start);
+    const e = new Date(b.end);
+    const ph = b.lead.phone;
+    const o = findOpp(b.oppId);
+    const addCal = `<div class="addcal${booker.fresh ? ' hi' : ''}">
+        <a class="btn sm ghost" href="${esc(b.ics)}">${icon('cal')}Apple / Outlook</a>
+        <a class="btn sm ghost" href="${esc(googleLink(b))}" target="_blank" rel="noopener">${icon('cal')}Google</a></div>`;
+    $('#bookerBody').innerHTML = `
+      <h2 id="bookerTitle">${esc(b.title)}</h2>
+      <p class="sub">${esc(b.lead.name)}${o ? ` · ${esc((state.board.pipeline.stages.find((x) => x.id === o.stageId) || {}).name || '')}` : ''}</p>
+      <div class="bk-when">${icon('cal')}<div><b>${esc(fmtDayLong(s))}</b><span>${esc(fmtTime(s))} – ${esc(fmtTime(e))} · ${esc(fmtLen(b.minutes))}</span></div></div>
+      ${b.address ? `<a class="bk-addr" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.address)}" target="_blank" rel="noopener">${icon('pin')}${esc(b.address)}</a>` : ''}
+      ${b.notes ? `<p class="bk-notes">${esc(b.notes)}</p>` : ''}
+      <div class="actions">
+        <a class="act${ph ? '' : ' off'}" href="${ph ? `tel:${esc(ph)}` : '#'}">${icon('phone')}Call</a>
+        <a class="act${ph ? '' : ' off'}" href="${ph ? `sms:${esc(ph)}` : '#'}">${icon('sms')}Text</a>
+        <a class="act${b.address ? '' : ' off'}" href="${b.address ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(b.address)}` : '#'}" target="_blank" rel="noopener">${icon('pin')}Directions</a>
+      </div>
+      <div class="sec"><h3>${booker.fresh ? 'Booked! Add it to your phone calendar' : 'Add to my calendar'}</h3>${addCal}</div>
+      <div class="sec bk-actions">
+        <button class="btn ghost" type="button" data-bk-act="edit">Change time or details</button>
+        ${o && state.openId !== o.id ? '<button class="btn ghost" type="button" data-bk-act="lead">Open lead</button>' : ''}
+        <button class="btn ghost danger" type="button" data-bk-act="cancel">Cancel appointment</button>
+      </div>`;
+  }
+
+  $('#bookerBody').addEventListener('click', async (e) => {
+    const q = e.target.closest('.qchip');
+    if (q && booker.mode === 'form') {
+      booker.draft.title = q.dataset.kind;
+      $('#bkTitle').value = q.dataset.kind;
+      document.querySelectorAll('.qchip').forEach((x) => x.classList.toggle('on', x === q));
+      return;
+    }
+    const act = e.target.closest('[data-bk-act]');
+    if (!act || booker.mode !== 'view') return;
+    const b = state.bk.map.get(booker.id);
+    if (!b) return;
+    if (act.dataset.bkAct === 'edit') {
+      booker.mode = 'form';
+      openBookingForm({ edit: b });
+    } else if (act.dataset.bkAct === 'lead') {
+      closeBooker();
+      if (findOpp(b.oppId)) setTimeout(() => openSheet(b.oppId), 250);
+    } else if (act.dataset.bkAct === 'cancel') {
+      if (!window.confirm(`Cancel ${b.title} with ${b.lead.name} on ${fmtDay(new Date(b.start))}?`)) return;
+      act.disabled = true;
+      try {
+        await api('bookings', { action: 'cancel', id: b.id, month: b.month, oppId: b.oppId, tz: tz() });
+        state.bk.map.delete(b.id);
+        rememberBooking(state.board.pipeline.id, b.id, null);
+        toast('Appointment cancelled');
+        closeBooker();
+        afterBookingsChange();
+      } catch (ex) {
+        toast(ex.message, true);
+        act.disabled = false;
+      }
+    }
+  });
 
   /* ---------------- admin: clients page ---------------- */
 
@@ -591,14 +1034,16 @@
 
   function showView(view) {
     state.view = view;
-    const clients = view === 'clients';
-    $('#leadsView').hidden = clients;
-    $('#chips').hidden = clients;
-    $('#board').hidden = clients;
-    $('#clientsView').hidden = !clients;
-    $('#clientsBtn').classList.toggle('on', clients);
-    $('#pipelinePick').hidden = clients || !(state.me && state.me.admin);
-    $('#refreshBtn').hidden = clients;
+    $('#leadsView').hidden = view !== 'leads';
+    $('#calView').hidden = view !== 'calendar';
+    $('#clientsView').hidden = view !== 'clients';
+    $('#tabs').hidden = view === 'clients';
+    $('#tabs').querySelectorAll('button').forEach((bt) => bt.classList.toggle('on', bt.dataset.view === view));
+    $('#clientsBtn').classList.toggle('on', view === 'clients');
+    $('#pipelinePick').hidden = view === 'clients' || !(state.me && state.me.admin);
+    $('#refreshBtn').hidden = view === 'clients';
+    if (view === 'calendar') { renderCalendar(); loadBookings(); }
+    if (view === 'leads' && state.board) render();
   }
 
   // Netlify storage can take up to a minute to list a change everywhere, so remember
@@ -846,7 +1291,7 @@
     editor.draft = null;
     $('#editor').hidden = true;
     $('#scrim').hidden = true;
-    if (fromPop !== true && history.state && history.state.editor) history.back();
+    if (fromPop !== true && history.state && history.state.editor) backQuietly();
   }
   $('#editorClose').addEventListener('click', closeEditor);
 

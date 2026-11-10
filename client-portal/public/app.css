@@ -289,7 +289,7 @@ html.client-theme .col .card{background:var(--panel)}
 .detail dd{margin:0;color:var(--muted);word-break:break-word}
 
 /* ---------- toast ---------- */
-.toast{position:fixed;left:50%;bottom:calc(20px + var(--safe-b));transform:translateX(-50%);z-index:40;max-width:calc(100% - 32px);
+.toast{position:fixed;left:50%;bottom:calc(20px + var(--safe-b));transform:translateX(-50%);z-index:40;width:max-content;max-width:calc(100vw - 32px);
   display:flex;align-items:center;gap:10px;background:var(--white);color:var(--ink);font-weight:600;font-size:14px;
   padding:12px 16px;border-radius:10px;box-shadow:0 12px 40px -10px rgba(0,0,0,.5);animation:up .2s ease}
 .toast svg{width:16px;height:16px;color:var(--accent);flex:0 0 auto}
@@ -374,5 +374,91 @@ html.client-theme .toast svg{color:#fff}
 .pv-card i{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--rule-hi);color:var(--accent-text)}
 .pv-card i svg{width:13px;height:13px}
 .pv-btn{align-self:flex-start;border-radius:4px;padding:6px 12px;font-family:var(--display);font-weight:700;font-size:12px;background:var(--accent);color:var(--on-accent)}
+
+/* ---------- tabs: leads / calendar ---------- */
+.tabs{display:flex;gap:4px;margin:14px 0 0;padding:4px;background:var(--panel);border:1px solid var(--rule);border-radius:12px}
+.tabs button{flex:1;height:40px;border:0;border-radius:9px;background:none;color:var(--muted);font-family:var(--display);font-weight:700;
+  font-size:15px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.tabs button svg{width:17px;height:17px}
+.tabs button.on{background:var(--accent);color:var(--on-accent)}
+.tab-c{min-width:20px;height:20px;border-radius:99px;padding:0 6px;font-family:var(--mono);font-size:11px;display:inline-grid;place-items:center;
+  background:var(--accent-soft-2);color:var(--accent-text)}
+.tabs button.on .tab-c{background:rgba(255,255,255,.28);color:var(--on-accent)}
+@media (min-width:960px){.tabs{max-width:380px}}
+
+/* ---------- calendar ---------- */
+.cal-view{padding-top:14px}
+.cal-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.cal-nav{display:flex;align-items:center;gap:6px;min-width:0}
+.cal-nav h2{font-family:var(--display);font-weight:800;font-size:21px;letter-spacing:-.02em;margin:0;white-space:nowrap}
+.cal-nav .icon-btn{width:36px;height:36px}
+.cal-nav .prev svg{transform:scaleX(-1)}
+.cal-top .btn svg{width:15px;height:15px}
+.cal-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+.cal-layout>*{min-width:0}
+@media (min-width:960px){.cal-layout{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);align-items:start}}
+.cal-month{background:var(--panel);border:1px solid var(--rule);border-radius:14px;padding:8px}
+.cal-wd,.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px}
+.cal-wd span{text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted-2);padding:4px 0 6px}
+.cal-day{aspect-ratio:1/1;min-height:42px;border:0;border-radius:10px;background:none;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:4px;font-weight:600;font-size:15px;cursor:pointer;color:var(--white);padding:0}
+.cal-day:hover{background:var(--panel-2)}
+.cal-day.past{color:var(--muted-2)}
+.cal-day.today{box-shadow:inset 0 0 0 1.5px var(--accent)}
+.cal-day.sel{background:var(--accent);color:var(--on-accent)}
+.cal-day .dots{display:flex;gap:3px;height:5px}
+.cal-day .dots i{width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.cal-day.sel .dots i{background:var(--on-accent)}
+.cal-blank{aspect-ratio:1/1}
+.cal-today{display:block;margin:6px auto 2px;background:none;border:0;color:var(--accent-text);font-weight:700;font-size:13px;cursor:pointer}
+.cal-agenda h3{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:500;margin:4px 0 10px}
+.bk-list{display:flex;flex-direction:column;gap:8px;margin:0 0 20px}
+.bk-empty{color:var(--muted-2);font-size:14px;border:1px dashed var(--rule-hi);border-radius:12px;padding:16px;text-align:center}
+.bk-empty button{display:block;margin:8px auto 0}
+.bk-card{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--rule);border-left:4px solid var(--accent);
+  border-radius:12px;padding:10px 10px 10px 12px;cursor:pointer;text-align:left;width:100%}
+.bk-card:hover{background:var(--panel-2)}
+.bk-card.past{opacity:.6}
+.bk-time{flex:0 0 66px;display:flex;flex-direction:column;line-height:1.25}
+.bk-time b{font-size:14.5px;white-space:nowrap}
+.bk-time span{font-size:12px;color:var(--muted)}
+.bk-main{flex:1;min-width:0}
+.bk-title{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bk-meta{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bk-card .call{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--rule-hi);color:var(--accent-text);
+  flex:0 0 auto;background:var(--panel-2)}
+.bk-card .call svg{width:17px;height:17px}
+.card .meta .bk{color:var(--accent-text);font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.card .meta .bk svg{width:13px;height:13px}
+
+/* appointment block inside the lead sheet */
+.sheet-bk{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.book-btn{width:100%;background:var(--accent-soft);color:var(--accent-text);border:1.5px dashed var(--accent)}
+.book-btn:hover{background:var(--accent-soft-2);color:var(--accent-text);border-color:var(--accent)}
+.book-btn svg{width:17px;height:17px}
+
+/* booking panel */
+.booker{z-index:33}
+.bk-scrim{z-index:32}
+.cf .field textarea{width:100%;min-height:80px;background:var(--panel-2);border:1px solid var(--rule-hi);border-radius:8px;padding:12px;font-size:16px;resize:vertical}
+.cf .field textarea:focus{outline:none;border-color:var(--accent)}
+.cf .field input[type=date],.cf .field input[type=time]{min-height:48px;-webkit-appearance:none;appearance:none}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.quick{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 8px}
+.qchip{border:1px solid var(--rule-hi);background:var(--panel-2);border-radius:99px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted)}
+.qchip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.bk-when{display:flex;gap:12px;align-items:center;background:var(--panel-2);border:1px solid var(--rule);border-radius:12px;padding:12px 14px;margin:2px 0 12px}
+.bk-when svg{width:22px;height:22px;color:var(--accent-text);flex:0 0 auto}
+.bk-when b{display:block;font-size:16px}
+.bk-when span{color:var(--muted);font-size:14px}
+.bk-addr{display:flex;align-items:center;gap:8px;color:var(--white);text-decoration:none;font-size:15px;margin:0 0 12px}
+.bk-addr svg{width:18px;height:18px;color:var(--accent-text);flex:0 0 auto}
+.bk-addr:hover{text-decoration:underline}
+.bk-notes{background:var(--panel-2);border:1px solid var(--rule);border-radius:10px;padding:10px 12px;font-size:14px;white-space:pre-wrap;word-break:break-word;margin:0 0 12px}
+.addcal{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.addcal .btn{min-height:46px;padding:8px 10px;font-size:14px;text-decoration:none}
+.addcal .btn svg{width:15px;height:15px}
+.addcal.hi{padding:12px;border-radius:12px;background:var(--accent-soft);border:1px solid var(--accent-dim)}
+.bk-actions{display:flex;flex-direction:column;gap:8px}
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
