@@ -3,21 +3,36 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Holiday lighting quotes</title>
+  <meta name="theme-color" content="#0b1430">
+  <title>Lumaquote</title>
   <link rel="stylesheet" href="/css/app.css">
 </head>
 <body class="staff">
-  <main class="auth-wrap">
-    <div class="card auth-card stack center">
-      <h1 id="platform-name">Holiday lighting quotes</h1>
-      <p class="muted">Quoting and booking software for Christmas light installers.</p>
-      <a class="btn btn-lg btn-block" href="/login">Sign in</a>
-      <p class="small muted">Looking for a quote? Use the link your installer sent you.</p>
-    </div>
-  </main>
+  <div class="auth auth-single">
+    <section class="auth-hero">
+      <div class="auth-brand">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3a9 9 0 0 0-5.2 16.3c.8.6 1.2 1.4 1.2 2.3V23h8v-1.4c0-.9.4-1.700 1.200-2.300A9 9 0 0 0 16 3z" fill="#ffd27a"/><rect x="12" y="24.500" width="8" height="2" rx="1" fill="#c8d2e8"/><rect x="13" y="27.500" width="6" height="2" rx="1" fill="#c8d2e8"/></svg>
+        <span data-platform-name>Lumaquote</span>
+      </div>
+      <div class="auth-pitch">
+        <h1>Quoting and booking for Christmas light installers.</h1>
+        <p>Homeowners see their own home lit up, get a price, and book. You measure from above and text the quote.</p>
+        <p><a class="btn btn-lg" href="/login">Installer sign in</a></p>
+        <p class="small">Looking for your quote? Use the link your installer sent you.</p>
+      </div>
+      <a class="powered powered-dark" href="https://leadthruagency.com" target="_blank" rel="noopener">
+        <span>Powered by</span>
+        <svg viewBox="0 0 100 100" aria-hidden="true"><path d="M22 8 L40 18 L40 62 L64 62 L64 44 L92 68 L64 92 L64 74 L22 74 Z" fill="currentColor"/></svg>
+        <strong>LeadThru</strong>
+      </a>
+    </section>
+  </div>
   <script type="module">
-    import { $, api } from "/js/lib.js";
-    api("public/platform").then((p) => { $("#platform-name").textContent = p.name; document.title = p.name; }).catch(() => {});
+    import { $$, api } from "/js/lib.js";
+    api("public/platform").then((p) => {
+      $$("[data-platform-name]").forEach((el) => (el.textContent = p.name));
+      document.title = p.name;
+    }).catch(() => {});
   </script>
 </body>
 </html>

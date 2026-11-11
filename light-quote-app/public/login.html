@@ -4,28 +4,99 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>Sign in</title>
+  <meta name="theme-color" content="#0b1430">
+  <title>Sign in · Lumaquote</title>
   <link rel="stylesheet" href="/css/app.css">
 </head>
 <body class="staff">
-  <main class="auth-wrap">
-    <form class="card auth-card stack" id="login" novalidate>
-      <div>
-        <h1 id="platform-name">Sign in</h1>
-        <p class="muted" style="margin-top:6px">Installer and admin sign-in.</p>
+  <div class="auth">
+    <section class="auth-hero">
+      <div class="auth-brand">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3a9 9 0 0 0-5.2 16.3c.8.6 1.2 1.4 1.2 2.3V23h8v-1.4c0-.9.4-1.700 1.200-2.300A9 9 0 0 0 16 3z" fill="#ffd27a"/><rect x="12" y="24.500" width="8" height="2" rx="1" fill="#c8d2e8"/><rect x="13" y="27.500" width="6" height="2" rx="1" fill="#c8d2e8"/></svg>
+        <span data-platform-name>Lumaquote</span>
       </div>
-      <label class="field"><span>Email</span><input type="email" id="email" autocomplete="username" required></label>
-      <label class="field"><span>Password</span><input type="password" id="password" autocomplete="current-password" required></label>
-      <p class="error-text" id="error" role="alert" hidden></p>
-      <button type="submit" class="btn btn-lg btn-block" id="submit">Sign in</button>
-    </form>
-  </main>
+
+      <svg class="auth-scene" viewBox="0 0 480 290" role="img" aria-label="A house at dusk with warm lights along the roofline">
+        <defs>
+          <radialGradient id="glow"><stop offset="0" stop-color="#ffcf7a" stop-opacity=".75"/><stop offset=".45" stop-color="#ffb84a" stop-opacity=".28"/><stop offset="1" stop-color="#ffb84a" stop-opacity="0"/></radialGradient>
+          <symbol id="bulb" overflow="visible"><circle r="14" fill="url(#glow)"/><circle r="3.400" fill="#fff1cf"/></symbol>
+          <symbol id="star" overflow="visible"><circle r="1.300" fill="#dfe8ff"/></symbol>
+        </defs>
+        <g opacity=".7">
+          <use href="#star" x="38" y="34"/><use href="#star" x="96" y="72"/><use href="#star" x="152" y="26"/><use href="#star" x="214" y="44"/>
+          <use href="#star" x="300" y="22"/><use href="#star" x="352" y="64"/><use href="#star" x="420" y="38"/><use href="#star" x="452" y="96"/>
+          <use href="#star" x="64" y="118"/><use href="#star" x="402" y="128"/>
+        </g>
+        <path d="M0 262h480" stroke="#2b3a66" stroke-width="2"/>
+        <rect x="135" y="170" width="210" height="92" fill="#17244d" stroke="#3a4b80" stroke-width="2"/>
+        <path d="M110 170 240 80l130 90" fill="#101a3a" stroke="#3a4b80" stroke-width="2" stroke-linejoin="round"/>
+        <rect x="222" y="206" width="36" height="56" rx="2" fill="#0d1631" stroke="#3a4b80" stroke-width="2"/>
+        <rect x="160" y="194" width="42" height="34" rx="2" fill="#ffcf7a" opacity=".85"/>
+        <rect x="278" y="194" width="42" height="34" rx="2" fill="#ffcf7a" opacity=".85"/>
+        <path d="M416 262v-40" stroke="#3a4b80" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="416" cy="196" r="34" fill="#12203f" stroke="#3a4b80" stroke-width="2"/>
+        <g class="auth-bulbs">
+          <use href="#bulb" x="110" y="170"/><use href="#bulb" x="126" y="159"/><use href="#bulb" x="142.500" y="147.500"/><use href="#bulb" x="159" y="136"/>
+          <use href="#bulb" x="175" y="125"/><use href="#bulb" x="191" y="114"/><use href="#bulb" x="207.500" y="102.500"/><use href="#bulb" x="224" y="91"/>
+          <use href="#bulb" x="240" y="80"/>
+          <use href="#bulb" x="256" y="91"/><use href="#bulb" x="272.500" y="102.500"/><use href="#bulb" x="289" y="114"/><use href="#bulb" x="305" y="125"/>
+          <use href="#bulb" x="321" y="136"/><use href="#bulb" x="337.500" y="147.500"/><use href="#bulb" x="354" y="159"/><use href="#bulb" x="370" y="170"/>
+          <use href="#bulb" x="398" y="182"/><use href="#bulb" x="424" y="172"/><use href="#bulb" x="408" y="206"/><use href="#bulb" x="434" y="202"/><use href="#bulb" x="416" y="222"/>
+        </g>
+      </svg>
+
+      <div class="auth-pitch">
+        <h1>Sell the job before you pull up to the house.</h1>
+        <ul>
+          <li>Homeowners see their own home lit up and a price in two minutes.</li>
+          <li>Measure the roofline from above and text the quote from your phone.</li>
+          <li>They accept and pick an install date online.</li>
+        </ul>
+      </div>
+    </section>
+
+    <main class="auth-panel">
+      <form class="auth-form stack" id="login" novalidate>
+        <div>
+          <h2>Sign in</h2>
+          <p class="muted" style="margin-top:6px">Installers and admins use the same sign-in.</p>
+        </div>
+        <label class="field"><span>Email</span><input type="email" id="email" autocomplete="username" inputmode="email" required></label>
+        <div class="field">
+          <label class="field-label" for="password">Password</label>
+          <div class="password-row">
+            <input type="password" id="password" autocomplete="current-password" required>
+            <button type="button" class="btn btn-ghost btn-sm" id="toggle-password" aria-pressed="false" aria-controls="password">Show</button>
+          </div>
+        </div>
+        <p class="error-text" id="error" role="alert" hidden></p>
+        <button type="submit" class="btn btn-lg btn-block" id="submit">Sign in</button>
+        <p class="small muted center">Forgot your password? Ask your account manager to reset it.</p>
+      </form>
+      <a class="powered" href="https://leadthruagency.com" target="_blank" rel="noopener">
+        <span>Powered by</span>
+        <svg viewBox="0 0 100 100" aria-hidden="true"><path d="M22 8 L40 18 L40 62 L64 62 L64 44 L92 68 L64 92 L64 74 L22 74 Z" fill="currentColor"/></svg>
+        <strong>LeadThru</strong>
+      </a>
+    </main>
+  </div>
   <script type="module">
-    import { $, api } from "/js/lib.js";
+    import { $, $$, api } from "/js/lib.js";
 
     const go = (role) => (location.href = role === "admin" ? "/admin" : "/app");
-    api("public/platform").then((p) => { $("#platform-name").textContent = p.name; document.title = `Sign in · ${p.name}`; }).catch(() => {});
+    api("public/platform").then((p) => {
+      $$("[data-platform-name]").forEach((el) => (el.textContent = p.name));
+      document.title = `Sign in · ${p.name}`;
+    }).catch(() => {});
     api("auth/me").then((me) => { if (me.session) go(me.session.role); }).catch(() => {});
+
+    $("#toggle-password").addEventListener("click", (event) => {
+      const input = $("#password");
+      const showing = input.type === "text";
+      input.type = showing ? "password" : "text";
+      event.target.textContent = showing ? "Show" : "Hide";
+      event.target.setAttribute("aria-pressed", String(!showing));
+    });
 
     $("#login").addEventListener("submit", async (event) => {
       event.preventDefault();
