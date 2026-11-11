@@ -140,6 +140,25 @@
   }
   renderDemo();
 
+  /* ---------- sticky call button: only once the hero's own button has scrolled away ---------- */
+  var callBar = $(".call-bar");
+  var heroCta = $("#hero-cta");
+  var closer = $(".closer");
+  if (callBar && heroCta && "IntersectionObserver" in window) {
+    var visible = new Set();
+    var watcher = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) visible.add(entry.target);
+        else visible.delete(entry.target);
+      });
+      callBar.classList.toggle("show", visible.size === 0);
+    });
+    watcher.observe(heroCta);
+    if (closer) watcher.observe(closer);
+  } else if (callBar) {
+    callBar.classList.add("show");
+  }
+
   /* ---------- calculators ---------- */
   function bind(ids, render) {
     ids.forEach(function (id) {
