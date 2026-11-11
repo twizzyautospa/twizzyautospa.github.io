@@ -15,6 +15,7 @@
  *   GET  /api/asset/<slug>/<file>         client logo, app icons and manifest (public, random slug)
  *   GET  /api/bookings?months=YYYY-MM,...[&pipeline=<id>]   portal calendar appointments
  *   POST /api/bookings {action:'save'|'cancel'|'complete', ...}   book / change / cancel / mark a job done
+ *   POST /api/remove   {id, reason}         delete a lead from the pipeline (contact kept, tagged "removed by client")
  *   POST /api/meta     {id, meta:'yes'|'no'}  mark whether a lead came from Meta (GHL tags "meta lead" / "not meta lead")
  *   GET  /api/ics?t=<signed token>        one appointment as an .ics file (add to phone calendar)
  *   GET  /api/health
@@ -606,6 +607,7 @@ const JOB_FIELDS = {
   date: 'next job date', time: 'next job time', type: 'next job type', address: 'next job address', business: 'next job business',
 };
 const TAG_JOB_DONE = 'job completed';
+const TAG_REMOVED = 'removed by client';
 let jobFieldCache = { at: 0, map: {} };
 async function jobFields() {
   if (Date.now() - jobFieldCache.at < 5 * 60e3) return jobFieldCache.map;
@@ -993,6 +995,23 @@ exports.handler = async (event) => {
       const r = await ghl('POST', `/contacts/${enc(o.contactId)}/notes`, { body: `[Portal · ${user.n}] ${text}` });
       const n = r.note || {};
       return reply(200, { note: { id: n.id, body: n.body || text, at: n.dateAdded || new Date().toISOString() } });
+    }
+
+    // Remove a lead from the pipeline: deletes the GHL opportunity, keeps the contact
+    // (tagged "removed by client" with a note giving the reason) so nothing is lost for reporting.
+    if (route === 'remove' && method === 'POST') {
+      const { id, reason } = parseBody(event);
+      const why = String(reason || '').trim().slice(0, 120);
+      if (!why) throw new HttpError(400, 'Pick a reason for removing this lead.');
+      const o = await loadOpportunity(user, id);
+      const cid = o.contactId || (o.contact && o.contact.id);
+      const name = slim(o).name;
+      if (cid) {
+        await ghlNote(cid, `[Portal · ${user.n}] Removed lead "${name}" from the pipeline. Reason: ${why}`);
+        await ghl('POST', `/contacts/${enc(cid)}/tags`, { tags: [TAG_REMOVED] }).catch(() => {});
+      }
+      await ghl('DELETE', `/opportunities/${enc(o.id)}`);
+      return reply(200, { removed: o.id });
     }
 
     if (route === 'meta' && method === 'POST') {

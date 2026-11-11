@@ -579,13 +579,45 @@
           <dt>Came in</dt><dd>${esc(fullDate(o.createdAt))}</dd>
           <dt>Last moved</dt><dd>${esc(fullDate(o.stageChangedAt))}</dd>
         </dl>
-      </div>`;
+      </div>
+
+      <div class="sec remove-sec" id="removeSec">${removeBlock(false)}</div>`;
     renderNotes(o.id);
     renderSheetBookings(o);
     renderMetaPick(o);
   }
 
   const isMeta = (o) => !!o && (o.meta === 'yes' || o.meta === 'auto');
+
+  const REMOVE_REASONS = ['Spam or fake', 'Duplicate', 'Wrong number', 'Not interested', 'Outside service area', 'Other'];
+  let removeReason = '';
+  function removeBlock(open) {
+    if (!open) return `<button class="btn ghost danger" type="button" data-remove="open">${icon('x')}Remove lead</button>`;
+    return `<h3>Remove this lead?</h3>
+      <p class="hint">It's deleted from your pipeline. LeadThru still keeps the contact and your reason.</p>
+      <div class="quick">${REMOVE_REASONS.map((r) => `<button type="button" class="qchip${r === removeReason ? ' on' : ''}" data-remove-why="${esc(r)}">${esc(r)}</button>`).join('')}</div>
+      <div class="remove-acts">
+        <button class="btn ghost" type="button" data-remove="cancel">Keep lead</button>
+        <button class="btn danger-solid" type="button" data-remove="go"${removeReason ? '' : ' disabled'}>Remove lead</button>
+      </div>`;
+  }
+
+  async function removeLead(id) {
+    const o = findOpp(id);
+    if (!o || !removeReason) return;
+    const btn = document.querySelector('[data-remove="go"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Removing…'; }
+    try {
+      await api('remove', { id, reason: removeReason });
+      state.board.opportunities = state.board.opportunities.filter((x) => x.id !== id);
+      closeSheet();
+      render();
+      toast(`${o.name} removed`);
+    } catch (ex) {
+      toast(ex.message, true);
+      if (btn) { btn.disabled = false; btn.textContent = 'Remove lead'; }
+    }
+  }
 
   function renderMetaPick(o) {
     const box = $('#metaPick');
@@ -640,6 +672,17 @@
     if (e.target.closest('[data-stop]')) return;
     const b = e.target.closest('[data-move]');
     if (b && state.openId) { moveTo(state.openId, b.dataset.move); return; }
+    const rm = e.target.closest('[data-remove]');
+    if (rm && state.openId) {
+      const a = rm.dataset.remove;
+      if (a === 'go') { removeLead(state.openId); return; }
+      removeReason = '';
+      $('#removeSec').innerHTML = removeBlock(a === 'open');
+      if (a === 'open') $('#removeSec').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      return;
+    }
+    const why = e.target.closest('[data-remove-why]');
+    if (why) { removeReason = why.dataset.removeWhy; $('#removeSec').innerHTML = removeBlock(true); return; }
     const mt = e.target.closest('[data-meta]');
     if (mt && state.openId) { setMeta(state.openId, mt.dataset.meta); return; }
     const book = e.target.closest('[data-book]');

@@ -556,4 +556,14 @@ html.client-theme .toast svg{color:#fff}
 .bk-card.done{border-left-color:var(--muted-2)}
 .bk-title .done-i{display:inline-block;width:14px;height:14px;vertical-align:-2px;margin-right:4px;color:var(--accent-text)}
 
+/* ---------- remove lead ---------- */
+.remove-sec{border-top:1px solid var(--rule);padding-top:18px}
+.remove-sec>.btn{width:100%}
+.remove-sec .btn svg{width:15px;height:15px}
+.remove-sec .hint{color:var(--muted-2);font-size:13px;margin:-4px 0 10px}
+.remove-acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.btn.danger-solid{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn.danger-solid:hover{filter:brightness(1.08);background:var(--danger);border-color:var(--danger)}
+.btn.danger-solid:disabled{opacity:.45;cursor:not-allowed}
+
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
