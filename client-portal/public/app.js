@@ -17,6 +17,7 @@
     view: 'leads',
     bk: { pid: null, months: new Set(), map: new Map() },   // portal calendar bookings by id
     cal: { month: null, day: null },
+    inv: { pid: null, settings: null, map: new Map(), loaded: false },
   };
 
   // Closing a panel with its X/scrim steps browser history back; ignore the popstate that causes.
@@ -193,7 +194,9 @@
     closeSheet();
     closeEditor();
     closeBooker();
+    closeInvPanel();
     state.bk = { pid: null, months: new Set(), map: new Map() };
+    state.inv = { pid: null, settings: null, map: new Map(), loaded: false };
     $('#clientsBtn').hidden = true;
     $('#app').hidden = true;
     $('#login').hidden = false;
@@ -252,7 +255,7 @@
     }
     if (me.brand) applyBrand(me.brand); else clearBrand();
     $('#clientsBtn').hidden = !state.me.admin;
-    showView('leads');
+    showView('home');
     $('#login').hidden = true;
     $('#app').hidden = false;
     $('#boot').hidden = true;
@@ -273,7 +276,9 @@
       const stages = data.pipeline.stages;
       if (!stages.some((s) => s.id === state.stage)) state.stage = (stages[0] || {}).id || null;
       render();
+      if (state.view === 'home') renderHome();
       loadBookings(true);
+      loadInvoices();
     } catch (ex) {
       if (!state.me) return;
       if (!state.board) {
@@ -292,6 +297,7 @@
     state.board = null;
     state.stage = null;
     state.bk = { pid: null, months: new Set(), map: new Map() };
+    state.inv = { pid: null, settings: null, map: new Map(), loaded: false };
     $('#board').innerHTML = '';
     $('#chips').innerHTML = '';
     $('#summary').innerHTML = '';
@@ -300,7 +306,7 @@
 
   // Keep it live: refresh every minute while open, and when coming back to the app.
   setInterval(() => {
-    if (state.me && !state.openId && !booker.open && state.view !== 'clients' && document.visibilityState === 'visible') loadBoard(true);
+    if (state.me && !state.openId && !booker.open && !invp.open && state.view !== 'clients' && document.visibilityState === 'visible') loadBoard(true);
   }, 60e3);
   document.addEventListener('visibilitychange', () => {
     if (state.me && document.visibilityState === 'visible' && Date.now() - state.lastFetch > 20e3 && !state.openId && !booker.open && state.view !== 'clients') loadBoard(true);
@@ -715,7 +721,8 @@
   });
   $('#sheetClose').addEventListener('click', closeSheet);
   function closeTop(fromPop) {
-    if (booker.open) closeBooker(fromPop);
+    if (invp.open) closeInvPanel(fromPop);
+    else if (booker.open) closeBooker(fromPop);
     else if (editor.open) closeEditor(fromPop);
     else closeSheet(fromPop);
   }
@@ -814,6 +821,7 @@
     c.textContent = soon;
     c.hidden = !soon;
     if (state.view === 'calendar') renderCalendar();
+    if (state.view === 'home') renderHome();
     if (state.board && state.view === 'leads') render();
     else if (state.openId) renderSheetBookings(findOpp(state.openId) || {});
     if (booker.open && booker.mode === 'view') renderBookingView();
@@ -1309,6 +1317,12 @@
           <p class="hint">${b.oppId ? 'Moves the lead to Job Completed so your review request goes out.' : 'Marks this job done in your calendar.'}</p></div>` : ''}
       ${new Date(b.end) < new Date() ? '' : `<div class="sec"><h3>${booker.fresh ? 'Booked! Add it to your phone calendar' : 'Add to my calendar'}</h3>${addCal}</div>`}
       <div class="sec bk-actions">
+        ${(() => {
+          const iv = invoiceForBooking(b.id);
+          return iv
+            ? `<button class="btn ghost" type="button" data-bk-act="invoice-open">${icon('doc')}Invoice ${esc(iv.number)} · ${iv.status === 'paid' ? 'Paid' : 'Unpaid'}</button>`
+            : `<button class="btn${b.completedAt ? '' : ' ghost'}" type="button" data-bk-act="invoice">${icon('doc')}Create invoice</button>`;
+        })()}
         <button class="btn ghost" type="button" data-bk-act="edit">Change time or details</button>
         ${o && state.openId !== o.id ? '<button class="btn ghost" type="button" data-bk-act="lead">Open lead</button>' : ''}
         ${b.completedAt ? '' : '<button class="btn ghost danger" type="button" data-bk-act="cancel">Cancel appointment</button>'}
@@ -1337,6 +1351,8 @@
     if (!act || booker.mode !== 'view') return;
     const b = state.bk.map.get(booker.id);
     if (!b) return;
+    if (act.dataset.bkAct === 'invoice') { openInvoiceEditor({ booking: b }); return; }
+    if (act.dataset.bkAct === 'invoice-open') { const iv = invoiceForBooking(b.id); if (iv) openInvoiceView(iv.id); return; }
     if (act.dataset.bkAct === 'edit') {
       booker.mode = 'form';
       openBookingForm({ edit: b });
@@ -1389,22 +1405,593 @@
     }
   });
 
+  /* ---------------- invoices ---------------- */
+
+  const money2f = (n) => `$${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  const ymdAdd = (ymd, days) => dayKey(addDays(fromDayKey(ymd), days));
+  const prettyYmd = (ymd) => (ymd ? fromDayKey(ymd).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '');
+  const numIn = (v) => Number(String(v == null ? '' : v).replace(/[^0-9.-]/g, '')) || 0;
+  const absUrl = (path) => new URL(path, window.location.origin).href;
+
+  const invList = () => [...state.inv.map.values()].sort((a, b) => (b.seq || 0) - (a.seq || 0));
+  const isOverdue = (v) => v.status !== 'paid' && v.dueDate && v.dueDate < dayKey(new Date());
+  const invoiceForBooking = (id) => invList().find((v) => v.bookingId === id);
+
+  function totalsOf(d) {
+    const subtotal = r2(d.lines.reduce((t, l) => t + r2(numIn(l.qty) * numIn(l.price)), 0));
+    const discount = Math.min(subtotal, r2(numIn(d.discount)));
+    const tax = r2(((subtotal - discount) * numIn(d.taxRate)) / 100);
+    return { subtotal, discount, tax, total: r2(subtotal - discount + tax) };
+  }
+
+  // This device's own recent saves, laid over the server list while storage catches up.
+  const invKey = (pid) => `lt_inv_${pid}`;
+  function invPending(pid) {
+    try { return JSON.parse(localStorage.getItem(invKey(pid)) || '[]').filter((x) => Date.now() - x.at < 10 * 60e3); } catch { return []; }
+  }
+  function rememberInvoice(pid, id, doc) {
+    const list = invPending(pid).filter((x) => x.id !== id);
+    list.push({ id, doc, at: Date.now() });
+    try { localStorage.setItem(invKey(pid), JSON.stringify(list)); } catch { /* private mode */ }
+  }
+
+  async function loadInvoices() {
+    const pid = state.board && state.board.pipeline.id;
+    if (!pid) return;
+    try {
+      const r = await api(`invoices${state.me.admin ? `?pipeline=${encodeURIComponent(pid)}` : ''}`);
+      if (!state.board || state.board.pipeline.id !== pid) return;
+      state.inv = { pid, settings: r.settings, map: new Map(r.invoices.map((v) => [v.id, v])), loaded: true };
+    } catch (ex) {
+      if (state.inv.pid !== pid) state.inv = { pid, settings: null, map: new Map(), loaded: false, error: ex.message };
+    }
+    for (const x of invPending(pid)) {
+      const cur = state.inv.map.get(x.id);
+      if (!x.doc) state.inv.map.delete(x.id);
+      else if (!cur || String(x.doc.updatedAt) >= String(cur.updatedAt)) state.inv.map.set(x.id, x.doc);
+    }
+    afterInvoicesChange();
+  }
+
+  function afterInvoicesChange() {
+    const unpaid = invList().filter((v) => v.status !== 'paid').length;
+    const c = $('#invCount');
+    c.textContent = unpaid;
+    c.hidden = !unpaid;
+    if (state.view === 'invoices') renderInvoices();
+    if (state.view === 'home') renderHome();
+    if (booker.open && booker.mode === 'view') renderBookingView();
+  }
+
+  const statusPill = (v) => {
+    const k = v.status === 'paid' ? 'paid' : isOverdue(v) ? 'overdue' : v.status;
+    const label = { paid: 'Paid', overdue: 'Overdue', sent: 'Sent', draft: 'Draft' }[k];
+    return `<span class="pill ${k}">${label}</span>`;
+  };
+
+  function invRow(v) {
+    return `<button type="button" class="inv-row" data-inv="${esc(v.id)}">
+      <span class="inv-main"><b>${esc(v.customer.name)}</b><span>${esc(v.number)} · ${esc(prettyYmd(v.issueDate))}</span></span>
+      <span class="inv-amt"><b>${esc(money2f(v.totals.total))}</b>${statusPill(v)}</span></button>`;
+  }
+
+  let invFilter = 'all';
+  function renderInvoices() {
+    const box = $('#invView');
+    if (!state.inv.loaded && !state.inv.error) { box.innerHTML = '<div class="empty">Loading invoices…</div>'; return; }
+    if (state.inv.error && !state.inv.loaded) { box.innerHTML = `<div class="err-box">${esc(state.inv.error)}</div>`; return; }
+    const all = invList();
+    const now = new Date();
+    const monthStart = dayKey(new Date(now.getFullYear(), now.getMonth(), 1));
+    const outstanding = all.filter((v) => v.status !== 'paid').reduce((t, v) => t + v.totals.total, 0);
+    const paidMonth = all.filter((v) => v.status === 'paid' && (v.paidAt || '').slice(0, 10) >= monthStart).reduce((t, v) => t + v.totals.total, 0);
+    const overdue = all.filter(isOverdue);
+    const shown = all.filter((v) => invFilter === 'all' || (invFilter === 'unpaid' ? v.status !== 'paid' : v.status === invFilter));
+    const chip = (k, l) => `<button type="button" class="chip" data-invf="${k}" aria-pressed="${invFilter === k}">${l}</button>`;
+    box.innerHTML = `
+      <div class="inv-top">
+        <h2>Invoices</h2>
+        <div class="inv-tools">
+          <button class="icon-btn" type="button" data-inva="settings" aria-label="Invoice settings" title="Invoice settings">${icon('gear')}</button>
+          <button class="btn sm" type="button" data-inva="new">${icon('plus')}New invoice</button>
+        </div>
+      </div>
+      <div class="rev">
+        <div class="rev-tile"><span class="l">Outstanding</span><b>${esc(money2f(outstanding))}</b><span class="s">${overdue.length ? `${overdue.length} overdue` : 'Nothing overdue'}</span></div>
+        <div class="rev-tile"><span class="l">Paid this month</span><b>${esc(money2f(paidMonth))}</b><span class="s">${all.filter((v) => v.status === 'paid').length} paid in total</span></div>
+      </div>
+      <nav class="chips inv-chips">${chip('all', 'All')}${chip('unpaid', 'Unpaid')}${chip('paid', 'Paid')}${chip('draft', 'Drafts')}</nav>
+      <div class="inv-list">${shown.length ? shown.map(invRow).join('')
+        : `<div class="empty">${all.length ? 'No invoices here.' : 'No invoices yet. Turn a booked job into one from the Calendar, or tap New invoice.'}</div>`}</div>`;
+  }
+
+  $('#invView').addEventListener('click', (e) => {
+    const f = e.target.closest('[data-invf]');
+    if (f) { invFilter = f.dataset.invf; renderInvoices(); return; }
+    const a = e.target.closest('[data-inva]');
+    if (a) { if (a.dataset.inva === 'settings') openInvoiceSettings(); else openInvoiceEditor(); return; }
+    const row = e.target.closest('[data-inv]');
+    if (row) openInvoiceView(row.dataset.inv);
+  });
+
+  /* ---- invoice panel ---- */
+
+  const invp = { open: false, mode: null, id: null, draft: null, busy: false };
+
+  function showInvPanel() {
+    invp.open = true;
+    $('#invScrim').hidden = false;
+    $('#invPanel').hidden = false;
+    $('#invPanel').scrollTop = 0;
+    if (!(history.state && history.state.inv)) history.pushState({ inv: 1 }, '');
+  }
+  function closeInvPanel(fromPop) {
+    if (!invp.open) return;
+    invp.open = false;
+    invp.draft = null;
+    $('#invScrim').hidden = true;
+    $('#invPanel').hidden = true;
+    if (fromPop !== true && history.state && history.state.inv) backQuietly();
+  }
+  $('#invClose').addEventListener('click', () => closeInvPanel());
+  $('#invScrim').addEventListener('click', () => closeInvPanel());
+
+  function nextNumberHint() {
+    const s = state.inv.settings || { prefix: 'INV-', start: 1001 };
+    const seq = Math.max(s.start - 1, ...invList().map((v) => v.seq || 0)) + 1;
+    return `${s.prefix}${seq}`;
+  }
+
+  function openInvoiceEditor({ invoice = null, booking = null, copy = false } = {}) {
+    if (!state.board) return;
+    const s = state.inv.settings || { taxName: 'HST', taxRate: 13, dueDays: 14 };
+    const today = dayKey(new Date());
+    let d;
+    if (invoice) {
+      d = JSON.parse(JSON.stringify(invoice));
+      if (copy) Object.assign(d, { id: null, number: '', status: 'draft', issueDate: today, dueDate: ymdAdd(today, s.dueDays || 0), bookingId: null });
+    } else {
+      d = {
+        id: null, number: '', status: 'draft', customer: { name: '', email: '', phone: '', address: '' },
+        oppId: null, bookingId: null, issueDate: today, dueDate: s.dueDays ? ymdAdd(today, s.dueDays) : '',
+        lines: [{ desc: '', qty: 1, price: '' }], taxName: s.taxName, taxRate: s.taxRate, discount: 0, customFields: [], notes: '',
+      };
+      if (booking) {
+        const st = new Date(booking.start);
+        Object.assign(d, {
+          customer: { name: booking.lead.name, email: booking.lead.email || '', phone: booking.lead.phone || '', address: booking.address || '' },
+          oppId: booking.oppId || null,
+          bookingId: booking.id,
+          lines: [{ desc: booking.title + (booking.notes ? ` - ${booking.notes}` : ''), qty: 1, price: booking.amount || '' }],
+          customFields: [{ label: 'Service date', value: fmtDayLong(st) }],
+        });
+      }
+    }
+    invp.mode = 'edit';
+    invp.draft = d;
+    renderInvoiceEditor();
+    showInvPanel();
+  }
+
+  function lineRow(l, i) {
+    return `<div class="line" data-line="${i}">
+      <textarea class="ln-desc" data-k="desc" rows="1" maxlength="300" placeholder="Description" aria-label="Line ${i + 1} description">${esc(l.desc)}</textarea>
+      <div class="ln-nums">
+        <label><span>Qty</span><input data-k="qty" inputmode="decimal" value="${esc(l.qty)}" aria-label="Line ${i + 1} quantity"></label>
+        <label><span>Price</span><div class="price"><input data-k="price" inputmode="decimal" placeholder="0" value="${esc(l.price)}" aria-label="Line ${i + 1} price"></div></label>
+        <b class="ln-amt">${esc(money2f(numIn(l.qty) * numIn(l.price)))}</b>
+        <button type="button" class="icon-btn small" data-del-line="${i}" aria-label="Remove line ${i + 1}"${invp.draft.lines.length < 2 ? ' disabled' : ''}>${icon('x')}</button>
+      </div></div>`;
+  }
+
+  function fieldRow(f, i) {
+    return `<div class="cfield" data-cf="${i}">
+      <input data-k="label" maxlength="40" placeholder="Label (e.g. PO #)" value="${esc(f.label)}" aria-label="Custom field ${i + 1} label">
+      <input data-k="value" maxlength="200" placeholder="Value" value="${esc(f.value)}" aria-label="Custom field ${i + 1} value">
+      <button type="button" class="icon-btn small" data-del-cf="${i}" aria-label="Remove field ${i + 1}">${icon('x')}</button></div>`;
+  }
+
+  function renderInvoiceEditor() {
+    const d = invp.draft;
+    const leads = state.board.opportunities.slice().sort((a, b) => a.name.localeCompare(b.name));
+    $('#invBody').innerHTML = `
+      <h2 id="invTitle">${d.id ? `Edit ${esc(d.number)}` : 'New invoice'}</h2>
+      <p class="sub">${d.bookingId ? 'Filled in from the booked job. Check the lines and price.' : 'Your logo and colours are added to the PDF automatically.'}</p>
+      <form class="cf inv-form" id="invForm" novalidate>
+        ${d.id || d.bookingId ? '' : `<label class="field"><span>Fill in from a lead (optional)</span><select id="ivLead">
+          <option value="">Type the customer in below…</option>${leads.map((l) => `<option value="${esc(l.id)}"${l.id === d.oppId ? ' selected' : ''}>${esc(l.name)}${l.contact.phone ? ` · ${esc(phonePretty(l.contact.phone))}` : ''}</option>`).join('')}
+        </select></label>`}
+        <div class="field"><span>Bill to</span>
+          <input id="ivName" maxlength="80" placeholder="Customer name" value="${esc(d.customer.name)}" aria-label="Customer name">
+          <div class="row2 manual-row">
+            <input id="ivPhone" type="tel" maxlength="40" placeholder="Phone" value="${esc(d.customer.phone)}" aria-label="Customer phone">
+            <input id="ivEmail" type="email" maxlength="120" placeholder="Email" value="${esc(d.customer.email)}" aria-label="Customer email">
+          </div>
+          <input id="ivAddr" class="manual-row" maxlength="200" placeholder="Address" value="${esc(d.customer.address)}" aria-label="Customer address">
+        </div>
+        <div class="row3">
+          <label class="field"><span>Invoice #</span><input id="ivNum" maxlength="30" placeholder="${esc(d.id ? d.number : nextNumberHint())}" value="${esc(d.id ? d.number : d.number || '')}"></label>
+          <label class="field"><span>Issued</span><input id="ivIssue" type="date" value="${esc(d.issueDate)}"></label>
+          <label class="field"><span>Due</span><input id="ivDue" type="date" value="${esc(d.dueDate)}"></label>
+        </div>
+        <div class="field"><span>Lines</span><div id="ivLines">${d.lines.map(lineRow).join('')}</div>
+          <button type="button" class="btn sm ghost add-btn" data-add="line">${icon('plus')}Add line</button></div>
+        <div class="row3">
+          <label class="field"><span>Tax name</span><input id="ivTaxName" maxlength="20" value="${esc(d.taxName)}"></label>
+          <label class="field"><span>Tax %</span><input id="ivTaxRate" inputmode="decimal" value="${esc(d.taxRate)}"></label>
+          <label class="field"><span>Discount</span><div class="price"><input id="ivDisc" inputmode="decimal" placeholder="0" value="${d.discount ? esc(d.discount) : ''}"></div></label>
+        </div>
+        <div class="field"><span>Custom fields</span><div id="ivFields">${d.customFields.map(fieldRow).join('')}</div>
+          <button type="button" class="btn sm ghost add-btn" data-add="field">${icon('plus')}Add field</button>
+          <span class="hint">Anything extra to show on the invoice: PO #, job site, warranty, permit #…</span></div>
+        <label class="field"><span>Notes</span><textarea id="ivNotes" maxlength="1000" placeholder="Thanks for your business! Warranty: 2 years on labour.">${esc(d.notes)}</textarea></label>
+        <div class="inv-totals" id="ivTotals"></div>
+        <p class="err" id="ivErr" hidden></p>
+        <button class="btn" type="submit" id="ivSave">${d.id ? 'Save changes' : 'Create invoice'}</button>
+      </form>`;
+    renderInvoiceTotals();
+  }
+
+  function renderInvoiceTotals() {
+    const d = invp.draft;
+    const t = totalsOf(d);
+    $('#ivTotals').innerHTML = `
+      <div><span>Subtotal</span><b>${esc(money2f(t.subtotal))}</b></div>
+      ${t.discount ? `<div><span>Discount</span><b>-${esc(money2f(t.discount))}</b></div>` : ''}
+      ${numIn(d.taxRate) ? `<div><span>${esc(d.taxName || 'Tax')} (${esc(numIn(d.taxRate))}%)</span><b>${esc(money2f(t.tax))}</b></div>` : ''}
+      <div class="grand"><span>Total</span><b>${esc(money2f(t.total))}</b></div>`;
+    document.querySelectorAll('#ivLines .line').forEach((row, i) => {
+      const l = d.lines[i];
+      if (l) row.querySelector('.ln-amt').textContent = money2f(numIn(l.qty) * numIn(l.price));
+    });
+  }
+
+  $('#invBody').addEventListener('input', (e) => {
+    const d = invp.draft;
+    if (!d || invp.mode === 'view') return;
+    if (invp.mode === 'settings') { d[e.target.dataset.s] = e.target.value; return; }
+    const t = e.target;
+    const line = t.closest('[data-line]');
+    const cf = t.closest('[data-cf]');
+    if (line) d.lines[Number(line.dataset.line)][t.dataset.k] = t.value;
+    else if (cf) d.customFields[Number(cf.dataset.cf)][t.dataset.k] = t.value;
+    else {
+      const map = { ivName: ['customer', 'name'], ivPhone: ['customer', 'phone'], ivEmail: ['customer', 'email'], ivAddr: ['customer', 'address'] };
+      if (map[t.id]) d.customer[map[t.id][1]] = t.value;
+      else if (t.id === 'ivNum') d.number = t.value;
+      else if (t.id === 'ivIssue') d.issueDate = t.value;
+      else if (t.id === 'ivDue') d.dueDate = t.value;
+      else if (t.id === 'ivTaxName') d.taxName = t.value;
+      else if (t.id === 'ivTaxRate') d.taxRate = t.value;
+      else if (t.id === 'ivDisc') d.discount = t.value;
+      else if (t.id === 'ivNotes') d.notes = t.value;
+    }
+    renderInvoiceTotals();
+  });
+
+  $('#invBody').addEventListener('change', (e) => {
+    const d = invp.draft;
+    if (!d || e.target.id !== 'ivLead') return;
+    const o = findOpp(e.target.value);
+    d.oppId = o ? o.id : null;
+    if (o) {
+      const b = nextBooking(o.id);
+      d.customer = { name: o.contact.name || o.name, phone: o.contact.phone || '', email: o.contact.email || '', address: (b && b.address) || d.customer.address };
+      if (!d.lines.some((l) => l.desc || numIn(l.price)) && o.value > 0) d.lines = [{ desc: 'Job', qty: 1, price: o.value }];
+    }
+    renderInvoiceEditor();
+  });
+
+  $('#invBody').addEventListener('click', async (e) => {
+    const d = invp.draft;
+    const add = e.target.closest('[data-add]');
+    if (add && d) {
+      if (add.dataset.add === 'line') d.lines.push({ desc: '', qty: 1, price: '' });
+      else d.customFields.push({ label: '', value: '' });
+      renderInvoiceEditor();
+      const sel = add.dataset.add === 'line' ? '#ivLines .line:last-child .ln-desc' : '#ivFields .cfield:last-child input';
+      $(sel).focus();
+      return;
+    }
+    const dl = e.target.closest('[data-del-line]');
+    if (dl && d) { d.lines.splice(Number(dl.dataset.delLine), 1); renderInvoiceEditor(); return; }
+    const dc = e.target.closest('[data-del-cf]');
+    if (dc && d) { d.customFields.splice(Number(dc.dataset.delCf), 1); renderInvoiceEditor(); return; }
+    const act = e.target.closest('[data-iv]');
+    if (act && invp.mode === 'view') invoiceAction(act.dataset.iv, act);
+  });
+
+  $('#invBody').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (invp.busy) return;
+    if (invp.mode === 'settings') { saveInvoiceSettings(); return; }
+    const d = invp.draft;
+    const err = $('#ivErr');
+    const fail = (m) => { err.textContent = m; err.hidden = false; };
+    err.hidden = true;
+    if (!d.customer.name.trim()) return fail("Add the customer's name.");
+    const lines = d.lines.map((l) => ({ desc: String(l.desc || '').trim(), qty: numIn(l.qty) || 1, price: numIn(l.price) })).filter((l) => l.desc || l.price);
+    if (!lines.length) return fail('Add at least one line with a description or price.');
+    const btn = $('#ivSave');
+    invp.busy = true;
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+      const pid = state.board.pipeline.id;
+      const r = await api('invoices', {
+        action: 'save', pipeline: pid,
+        invoice: {
+          ...d, lines, number: String(d.number || '').trim(), taxRate: numIn(d.taxRate), discount: numIn(d.discount),
+          customFields: d.customFields.filter((f) => String(f.label).trim() || String(f.value).trim()),
+        },
+      });
+      state.inv.map.set(r.invoice.id, r.invoice);
+      rememberInvoice(pid, r.invoice.id, r.invoice);
+      toast(d.id ? `${r.invoice.number} saved` : `${r.invoice.number} created`);
+      openInvoiceView(r.invoice.id);
+      afterInvoicesChange();
+    } catch (ex) {
+      fail(ex.message);
+      btn.disabled = false;
+      btn.textContent = d.id ? 'Save changes' : 'Create invoice';
+    } finally {
+      invp.busy = false;
+    }
+  });
+
+  function openInvoiceView(id) {
+    if (!state.inv.map.has(id)) return;
+    invp.mode = 'view';
+    invp.id = id;
+    invp.draft = null;
+    renderInvoiceView();
+    if (!invp.open) showInvPanel(); else $('#invPanel').scrollTop = 0;
+  }
+
+  function renderInvoiceView() {
+    const v = state.inv.map.get(invp.id);
+    if (!v) { closeInvPanel(); return; }
+    const t = v.totals;
+    const canShare = !!navigator.share;
+    $('#invBody').innerHTML = `
+      <h2 id="invTitle">${esc(v.number)} ${statusPill(v)}</h2>
+      <p class="sub">${esc(v.customer.name)} · issued ${esc(prettyYmd(v.issueDate))}${v.dueDate ? ` · due ${esc(prettyYmd(v.dueDate))}` : ''}</p>
+      <div class="inv-big"><span>${v.status === 'paid' ? 'Paid' : 'Amount due'}</span><b>${esc(money2f(t.total))}</b></div>
+      <div class="actions inv-acts">
+        <a class="act" href="${esc(v.pdf)}" download="Invoice-${esc(v.number)}.pdf" target="_blank" rel="noopener">${icon('download')}Download</a>
+        <button class="act" type="button" data-iv="sms"${v.customer.phone ? '' : ' disabled'}>${icon('sms')}Text it</button>
+        <button class="act" type="button" data-iv="email"${v.customer.email ? '' : ' disabled'}>${icon('mail')}Email it</button>
+      </div>
+      <div class="inv-acts2">
+        ${canShare ? `<button class="btn sm ghost" type="button" data-iv="share">${icon('share')}Share…</button>` : ''}
+        <button class="btn sm ghost" type="button" data-iv="copy">${icon('link')}Copy link</button>
+      </div>
+      <div class="sec"><h3>Lines</h3>
+        <div class="inv-lines">${v.lines.map((l) => `<div><span>${esc(l.desc || '—')}${l.qty !== 1 ? ` <em>× ${esc(l.qty)}</em>` : ''}</span><b>${esc(money2f(l.qty * l.price))}</b></div>`).join('')}
+          <div class="sum"><span>Subtotal</span><b>${esc(money2f(t.subtotal))}</b></div>
+          ${t.discount ? `<div class="sum"><span>Discount</span><b>-${esc(money2f(t.discount))}</b></div>` : ''}
+          ${v.taxRate ? `<div class="sum"><span>${esc(v.taxName)} (${esc(v.taxRate)}%)</span><b>${esc(money2f(t.tax))}</b></div>` : ''}
+          <div class="sum grand"><span>Total</span><b>${esc(money2f(t.total))}</b></div></div></div>
+      ${v.customFields.length ? `<div class="sec"><h3>Details</h3><dl class="detail">${v.customFields.map((f) => `<dt>${esc(f.label)}</dt><dd>${esc(f.value)}</dd>`).join('')}</dl></div>` : ''}
+      <div class="sec bk-actions">
+        ${v.status === 'paid'
+          ? '<button class="btn ghost" type="button" data-iv="unpaid">Mark as unpaid</button>'
+          : `<button class="btn" type="button" data-iv="paid">${icon('check')}Mark as paid</button>`}
+        <button class="btn ghost" type="button" data-iv="edit">Edit invoice</button>
+        <button class="btn ghost" type="button" data-iv="copyinv">Duplicate</button>
+        <button class="btn ghost danger" type="button" data-iv="delete">Delete invoice</button>
+      </div>`;
+  }
+
+  async function setStatus(v, status) {
+    const pid = state.board.pipeline.id;
+    const r = await api('invoices', { action: 'status', pipeline: pid, id: v.id, status });
+    state.inv.map.set(r.invoice.id, r.invoice);
+    rememberInvoice(pid, r.invoice.id, r.invoice);
+    afterInvoicesChange();
+    if (invp.open && invp.mode === 'view') renderInvoiceView();
+    return r.invoice;
+  }
+
+  async function invoiceAction(a, btn) {
+    const v = state.inv.map.get(invp.id);
+    if (!v) return;
+    const pid = state.board.pipeline.id;
+    const link = absUrl(v.pdf);
+    const first = v.customer.name.split(/\s+/)[0];
+    const biz = (state.inv.settings && state.inv.settings.businessName) || (state.me && state.me.name) || '';
+    const msg = `Hi ${first}, here's your invoice ${v.number} from ${biz} for ${money2f(v.totals.total)}: ${link}`;
+    try {
+      if (a === 'sms' || a === 'email') {
+        btn.disabled = true;
+        const r = await api('invoices', { action: 'send', pipeline: pid, id: v.id, via: a });
+        if (r.sent) {
+          state.inv.map.set(r.invoice.id, r.invoice);
+          rememberInvoice(pid, r.invoice.id, r.invoice);
+          toast(a === 'sms' ? `Texted to ${v.customer.phone}` : `Emailed to ${v.customer.email}`);
+          afterInvoicesChange();
+          renderInvoiceView();
+        } else {
+          // GHL sending isn't switched on: hand it to the phone's own Messages / Mail app.
+          const url = a === 'sms'
+            ? `sms:${v.customer.phone}${/iPhone|iPad|Mac/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(msg)}`
+            : `mailto:${v.customer.email}?subject=${encodeURIComponent(`Invoice ${v.number} from ${biz}`)}&body=${encodeURIComponent(`${msg}\n\nThank you!\n${biz}`)}`;
+          window.location.href = url;
+          if (v.status === 'draft') await setStatus(v, 'sent');
+        }
+        btn.disabled = false;
+      } else if (a === 'share') {
+        await navigator.share({ title: `Invoice ${v.number}`, text: msg, url: link }).catch(() => null);
+        if (v.status === 'draft') await setStatus(v, 'sent');
+      } else if (a === 'copy') {
+        await navigator.clipboard.writeText(link);
+        toast('Invoice link copied');
+      } else if (a === 'paid' || a === 'unpaid') {
+        await setStatus(v, a === 'paid' ? 'paid' : 'sent');
+        toast(a === 'paid' ? `${v.number} marked paid` : `${v.number} marked unpaid`);
+      } else if (a === 'edit') {
+        openInvoiceEditor({ invoice: v });
+      } else if (a === 'copyinv') {
+        openInvoiceEditor({ invoice: v, copy: true });
+      } else if (a === 'delete') {
+        if (!window.confirm(`Delete invoice ${v.number}? This can't be undone.`)) return;
+        await api('invoices', { action: 'delete', pipeline: pid, id: v.id });
+        state.inv.map.delete(v.id);
+        rememberInvoice(pid, v.id, null);
+        toast(`${v.number} deleted`);
+        closeInvPanel();
+        afterInvoicesChange();
+      }
+    } catch (ex) {
+      toast(ex.message, true);
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  /* ---- invoice settings ---- */
+
+  const SETTINGS_FIELDS = [
+    ['businessName', 'Business name', 'text'], ['address', 'Business address', 'text'], ['phone', 'Phone', 'tel'],
+    ['email', 'Email', 'email'], ['website', 'Website', 'text'],
+    ['taxNumberLabel', 'Tax number label', 'text'], ['taxNumber', 'Tax number (HST/GST #)', 'text'],
+    ['taxName', 'Default tax name', 'text'], ['taxRate', 'Default tax %', 'num'], ['dueDays', 'Due in (days)', 'num'],
+    ['prefix', 'Invoice # prefix', 'text'], ['start', 'First invoice #', 'num'],
+  ];
+
+  function openInvoiceSettings() {
+    invp.mode = 'settings';
+    invp.draft = { ...(state.inv.settings || {}) };
+    const d = invp.draft;
+    $('#invBody').innerHTML = `
+      <h2 id="invTitle">Invoice settings</h2>
+      <p class="sub">Shown on every invoice PDF. Your logo and colours come from your portal branding.</p>
+      <form class="cf" id="invSettingsForm" novalidate>
+        ${SETTINGS_FIELDS.map(([k, label, type]) => `<label class="field"><span>${esc(label)}</span>
+          <input data-s="${k}" ${type === 'num' ? 'inputmode="decimal"' : `type="${type === 'text' ? 'text' : type}"`} value="${esc(d[k] == null ? '' : d[k])}"></label>`).join('')}
+        <label class="field"><span>How to pay</span><textarea data-s="payment" maxlength="500" placeholder="E-transfer to payments@yourbusiness.ca, or cheque payable to…">${esc(d.payment || '')}</textarea></label>
+        <label class="field"><span>Terms / footer note</span><textarea data-s="terms" maxlength="500">${esc(d.terms || '')}</textarea></label>
+        <p class="err" id="ivErr" hidden></p>
+        <button class="btn" type="submit" id="ivSetSave">Save settings</button>
+      </form>`;
+    showInvPanel();
+  }
+
+  async function saveInvoiceSettings() {
+    const btn = $('#ivSetSave');
+    invp.busy = true;
+    btn.disabled = true;
+    try {
+      const r = await api('invoices', { action: 'settings', pipeline: state.board.pipeline.id, settings: invp.draft });
+      state.inv.settings = r.settings;
+      toast('Invoice settings saved');
+      closeInvPanel();
+      afterInvoicesChange();
+    } catch (ex) {
+      $('#ivErr').textContent = ex.message;
+      $('#ivErr').hidden = false;
+      btn.disabled = false;
+    } finally {
+      invp.busy = false;
+    }
+  }
+
+  /* ---------------- home (dashboard) ---------------- */
+
+  function renderHome() {
+    const box = $('#homeView');
+    if (!state.board) { box.innerHTML = '<div class="empty">Loading…</div>'; return; }
+    const now = new Date();
+    const today = dayKey(now);
+    const opps = state.board.opportunities;
+    const stages = state.board.pipeline.stages;
+    const hour = now.getHours();
+    const hello = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    const name = state.me.admin ? state.board.pipeline.name : state.me.name;
+    const weekAgo = Date.now() - 7 * 864e5;
+    const newLeads = opps.filter((o) => o.createdAt && new Date(o.createdAt) > weekAgo).length;
+    const metaShare = opps.length ? Math.round((opps.filter((o) => isMeta(o)).length / opps.length) * 100) : 0;
+    const ws = startOfWeek(now);
+    const ms = new Date(now.getFullYear(), now.getMonth(), 1);
+    const weekJobs = allBookings().filter((b) => new Date(b.start) >= ws && new Date(b.start) < addDays(ws, 7)).length;
+    const monthRev = revenue(ms, new Date(now.getFullYear(), now.getMonth() + 1, 1));
+    const unpaid = invList().filter((v) => v.status !== 'paid');
+    const outstanding = unpaid.reduce((t, v) => t + v.totals.total, 0);
+    const todays = allBookings().filter((b) => dayKey(new Date(b.start)) === today);
+    const upcoming = allBookings().filter((b) => new Date(b.start) > now && dayKey(new Date(b.start)) !== today).slice(0, 3);
+    const firstStage = stages[0];
+    const waiting = firstStage ? opps.filter((o) => o.stageId === firstStage.id) : [];
+    const overdue = unpaid.filter(isOverdue);
+    const attention = [
+      waiting.length && `<button type="button" class="att" data-go="leads" data-stage="${esc(firstStage.id)}"><b>${waiting.length}</b><span>${waiting.length === 1 ? 'lead' : 'leads'} in ${esc(firstStage.name)}. Call them first.</span>${icon('next')}</button>`,
+      overdue.length && `<button type="button" class="att warn" data-go="invoices"><b>${overdue.length}</b><span>overdue ${overdue.length === 1 ? 'invoice' : 'invoices'} · ${esc(money2f(overdue.reduce((t, v) => t + v.totals.total, 0)))}</span>${icon('next')}</button>`,
+    ].filter(Boolean).join('');
+    box.innerHTML = `
+      <div class="home-hello"><h2>${esc(hello)}${name ? `, ${esc(name)}` : ''}</h2><p>${esc(now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))}</p></div>
+      <div class="home-kpis">
+        <button type="button" class="kpi" data-go="leads"><span class="l">New leads · 7 days</span><b>${newLeads}</b><span class="s">${metaShare}% from Meta</span></button>
+        <button type="button" class="kpi" data-go="calendar"><span class="l">Jobs this week</span><b>${weekJobs}</b><span class="s">${todays.length} today</span></button>
+        <button type="button" class="kpi" data-go="calendar"><span class="l">Revenue this month</span><b>${esc(shortMoney(monthRev.total))}</b><span class="s">${monthRev.meta ? `${esc(shortMoney(monthRev.meta))} from Meta` : `${monthRev.jobs} priced ${monthRev.jobs === 1 ? 'job' : 'jobs'}`}</span></button>
+        <button type="button" class="kpi" data-go="invoices"><span class="l">Unpaid invoices</span><b>${esc(shortMoney(outstanding))}</b><span class="s">${unpaid.length} open</span></button>
+      </div>
+      <div class="wrapup-slot"></div>
+      ${attention ? `<div class="home-att">${attention}</div>` : ''}
+      <div class="home-grid">
+        <section class="home-card">
+          <div class="hc-head"><h3>Today</h3><button class="btn sm ghost" type="button" data-home="book">${icon('plus')}Book</button></div>
+          <div class="bk-list">${todays.length ? todays.map((b) => bkCard(b)).join('') : '<div class="bk-empty">Nothing booked today.</div>'}</div>
+          ${upcoming.length ? `<h3 class="hc-sub">Coming up</h3><div class="bk-list">${upcoming.map((b) => bkCard(b, true)).join('')}</div>` : ''}
+        </section>
+        <section class="home-card">
+          <div class="hc-head"><h3>Pipeline</h3><button class="btn sm ghost" type="button" data-go="leads">All leads</button></div>
+          <div class="stage-tiles">${stages.map((s) => `<button type="button" class="stile" data-go="leads" data-stage="${esc(s.id)}">
+            <b>${opps.filter((o) => o.stageId === s.id).length}</b><span>${esc(s.name)}</span></button>`).join('')}</div>
+        </section>
+        <section class="home-card">
+          <div class="hc-head"><h3>Invoices</h3><button class="btn sm ghost" type="button" data-home="invoice">${icon('plus')}New</button></div>
+          <div class="inv-list">${invList().slice(0, 3).map(invRow).join('') || '<div class="bk-empty">No invoices yet.</div>'}</div>
+        </section>
+      </div>`;
+    renderWrapUp();
+  }
+
+  $('#homeView').addEventListener('click', (e) => {
+    if (e.target.closest('[data-stop]')) return;
+    const go = e.target.closest('[data-go]');
+    if (go) {
+      if (go.dataset.stage) { state.stage = go.dataset.stage; state.query = ''; $('#search').value = ''; }
+      showView(go.dataset.go);
+      return;
+    }
+    const h = e.target.closest('[data-home]');
+    if (h) { if (h.dataset.home === 'book') openBookingForm({ day: dayKey(new Date()) }); else openInvoiceEditor(); return; }
+    const card = e.target.closest('[data-bk]');
+    if (card) { openBookingView(card.dataset.bk); return; }
+    const inv = e.target.closest('[data-inv]');
+    if (inv) openInvoiceView(inv.dataset.inv);
+  });
+
   /* ---------------- admin: clients page ---------------- */
 
   const editor = { open: false, draft: null, busy: false };
 
   function showView(view) {
     state.view = view;
+    $('#homeView').hidden = view !== 'home';
     $('#leadsView').hidden = view !== 'leads';
     $('#calView').hidden = view !== 'calendar';
+    $('#invView').hidden = view !== 'invoices';
     $('#clientsView').hidden = view !== 'clients';
     $('#tabs').hidden = view === 'clients';
     $('#tabs').querySelectorAll('button').forEach((bt) => bt.classList.toggle('on', bt.dataset.view === view));
     $('#clientsBtn').classList.toggle('on', view === 'clients');
     $('#pipelinePick').hidden = view === 'clients' || !(state.me && state.me.admin);
     $('#refreshBtn').hidden = view === 'clients';
+    if (view === 'home') renderHome();
     if (view === 'calendar') { renderCalendar(); loadBookings(); }
+    if (view === 'invoices') renderInvoices();
     if (view === 'leads' && state.board) render();
+    window.scrollTo(0, 0);
   }
 
   // Netlify storage can take up to a minute to list a change everywhere, so remember

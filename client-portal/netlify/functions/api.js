@@ -15,6 +15,9 @@
  *   GET  /api/asset/<slug>/<file>         client logo, app icons and manifest (public, random slug)
  *   GET  /api/bookings?months=YYYY-MM,...[&pipeline=<id>]   portal calendar appointments
  *   POST /api/bookings {action:'save'|'cancel'|'complete', ...}   book / change / cancel / mark a job done
+ *   GET  /api/invoices[?pipeline=]       invoices + invoice settings for the pipeline
+ *   POST /api/invoices {action:'save'|'status'|'delete'|'settings'|'send', ...}
+ *   GET  /api/invoice-pdf?t=<signed>     branded invoice PDF (public link, one saved version)
  *   POST /api/remove   {id, reason}         delete a lead from the pipeline (contact kept, tagged "removed by client")
  *   POST /api/meta     {id, meta:'yes'|'no'}  mark whether a lead came from Meta (GHL tags "meta lead" / "not meta lead")
  *   GET  /api/ics?t=<signed token>        one appointment as an .ics file (add to phone calendar)
@@ -74,8 +77,19 @@ function localStore(dir) {
     async set(key, buf) { fs.mkdirSync(path.dirname(file(key)), { recursive: true }); fs.writeFileSync(file(key), Buffer.from(buf)); },
     async delete(key) { try { fs.unlinkSync(file(key)); } catch { /* gone */ } },
     async list(prefix) {
-      const d = file(prefix);
-      try { return fs.readdirSync(d).map((f) => `${prefix}${f}`); } catch { return []; }
+      // Like Netlify Blobs: every key under the prefix, however deep.
+      const walk = (rel) => {
+        let out = [];
+        let names = [];
+        try { names = fs.readdirSync(file(rel)); } catch { return out; }
+        for (const n of names) {
+          const k = `${rel}${n}`;
+          if (fs.statSync(file(k)).isDirectory()) out = out.concat(walk(`${k}/`));
+          else out.push(k);
+        }
+        return out;
+      };
+      return walk(prefix);
     },
   };
 }
@@ -805,6 +819,431 @@ async function completeBooking(store, user, body) {
   return { booking: publicBooking(rec), opportunity, stageName, synced };
 }
 
+/* ---------------- invoices ----------------
+ * Every save is a NEW blob key ("inv/<pipelineId>/<invoiceId>/<version>"), so a link to a
+ * version always shows exactly what was saved, and storage sync delays never serve an old copy.
+ * Settings live the same way at "invcfg/<pipelineId>/<version>".
+ */
+const INV_ID_RE = /^[a-f0-9]{12}$/;
+const INV_STATUS = ['draft', 'sent', 'paid'];
+const recentDocs = new Map(); // base key -> { key, doc, at }  (this instance's own recent writes)
+
+const versionKey = () => `${Date.now().toString(36).padStart(9, '0')}-${crypto.randomBytes(3).toString('hex')}`;
+
+async function vput(store, base, doc) {
+  const key = `${base}/${versionKey()}`;
+  await store.setJSON(key, doc);
+  recentDocs.set(base, { key, doc, at: Date.now() });
+  return key;
+}
+
+// Latest version of every document under a prefix: Map(base -> { key, doc }).
+async function vlatestAll(store, prefix) {
+  const best = new Map();
+  for (const k of await store.list(prefix)) {
+    const base = k.slice(0, k.lastIndexOf('/'));
+    if (!best.has(base) || k > best.get(base)) best.set(base, k);
+  }
+  const out = new Map();
+  await Promise.all([...best].map(async ([base, key]) => {
+    const doc = await store.get(key, { type: 'json' }).catch(() => null);
+    if (doc) out.set(base, { key, doc });
+  }));
+  for (const [base, r] of recentDocs) {
+    if (Date.now() - r.at > 10 * 60e3) { recentDocs.delete(base); continue; }
+    if (!base.startsWith(prefix)) continue;
+    const cur = out.get(base);
+    if (!cur || r.key > cur.key) out.set(base, { key: r.key, doc: r.doc });
+  }
+  return out;
+}
+
+async function vlatest(store, base) {
+  return (await vlatestAll(store, `${base}/`)).get(base) || null;
+}
+
+const money2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const clip = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+
+function invoiceTotals(inv) {
+  const subtotal = money2(inv.lines.reduce((t, l) => t + money2(l.qty * l.price), 0));
+  const discount = Math.min(subtotal, money2(inv.discount));
+  const tax = money2(((subtotal - discount) * (Number(inv.taxRate) || 0)) / 100);
+  return { subtotal, discount, tax, total: money2(subtotal - discount + tax) };
+}
+
+async function invoiceSettings(store, pid, clientName) {
+  const r = await vlatest(store, `invcfg/${pid}`);
+  const initials = String(clientName || 'INV').split(/\s+/).filter(Boolean).map((w) => w[0]).join('').toUpperCase().slice(0, 3) || 'INV';
+  return {
+    businessName: clientName || '',
+    address: '', phone: '', email: '', website: '',
+    taxNumberLabel: 'HST #', taxNumber: '',
+    taxName: 'HST', taxRate: 13,
+    dueDays: 14,
+    payment: '', terms: 'Thank you for your business!',
+    prefix: `${initials}-`, start: 1001,
+    ...(r ? r.doc : {}),
+  };
+}
+
+function cleanSettings(s) {
+  return {
+    businessName: clip(s.businessName, 80), address: clip(s.address, 200), phone: clip(s.phone, 40),
+    email: clip(s.email, 120), website: clip(s.website, 120),
+    taxNumberLabel: clip(s.taxNumberLabel, 20), taxNumber: clip(s.taxNumber, 40),
+    taxName: clip(s.taxName, 20), taxRate: Math.min(50, Math.max(0, Number(s.taxRate) || 0)),
+    dueDays: Math.min(365, Math.max(0, Math.round(Number(s.dueDays) || 0))),
+    payment: clip(s.payment, 500), terms: clip(s.terms, 500),
+    prefix: clip(s.prefix, 12).replace(/\s+/g, ''), start: Math.min(1e7, Math.max(1, Math.round(Number(s.start) || 1001))),
+  };
+}
+
+function pdfToken(pid, key) {
+  const payload = Buffer.from(JSON.stringify({ p: pid, k: key })).toString('base64url');
+  return `${payload}.${sign(`inv.${payload}`).slice(0, 24)}`;
+}
+
+function publicInvoice(pid, key, doc) {
+  return { ...doc, pdf: `/api/invoice-pdf?t=${pdfToken(pid, key)}` };
+}
+
+async function listInvoices(store, pid) {
+  const all = await vlatestAll(store, `inv/${pid}/`);
+  return [...all.values()].filter((r) => !r.doc.deleted)
+    .map((r) => publicInvoice(pid, r.key, r.doc))
+    .sort((a, b) => (b.seq || 0) - (a.seq || 0) || String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
+const ymdOk = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
+
+async function saveInvoice(store, user, pid, body) {
+  const v = body.invoice || {};
+  const isNew = !v.id;
+  if (!isNew && !INV_ID_RE.test(String(v.id))) throw new HttpError(400, 'Unknown invoice.');
+  const id = isNew ? crypto.randomBytes(6).toString('hex') : v.id;
+  const prevRec = isNew ? null : await vlatest(store, `inv/${pid}/${id}`);
+  const prev = prevRec ? prevRec.doc : null;
+  if (!isNew && (!prev || prev.deleted)) throw new HttpError(404, 'That invoice no longer exists.');
+
+  const lines = (Array.isArray(v.lines) ? v.lines : []).slice(0, 60)
+    .map((l) => ({ desc: clip(l.desc, 300), qty: money2(l.qty), price: money2(l.price) }))
+    .filter((l) => l.desc || l.price);
+  if (!lines.length) throw new HttpError(400, 'Add at least one line.');
+  const customer = {
+    name: clip(v.customer && v.customer.name, 80), email: clip(v.customer && v.customer.email, 120),
+    phone: clip(v.customer && v.customer.phone, 40), address: clip(v.customer && v.customer.address, 200),
+  };
+  if (!customer.name) throw new HttpError(400, "Add the customer's name.");
+
+  // Optional link to a lead in this pipeline (checked like any other lead access).
+  let oppId = null; let contactId = null;
+  if (v.oppId) {
+    const o = await loadOpportunity(user, v.oppId);
+    if (o.pipelineId !== pid) throw new HttpError(403, 'That lead is not in this pipeline.');
+    oppId = o.id;
+    contactId = o.contactId || (o.contact && o.contact.id) || null;
+  }
+
+  const settings = await invoiceSettings(store, pid, await clientNameFor(store, pid, user));
+  let seq = prev ? prev.seq : null;
+  let number = clip(v.number, 30);
+  if (isNew) {
+    const existing = await listInvoices(store, pid);
+    seq = Math.max(settings.start - 1, ...existing.map((x) => x.seq || 0)) + 1;
+    if (!number) number = `${settings.prefix}${seq}`;
+  }
+  if (!number) number = prev.number;
+  const now = new Date().toISOString();
+  const doc = {
+    id, pipelineId: pid, seq, number,
+    status: INV_STATUS.includes(v.status) ? v.status : (prev ? prev.status : 'draft'),
+    customer, oppId, contactId,
+    bookingId: clip(v.bookingId, 20) || (prev && prev.bookingId) || null,
+    issueDate: ymdOk(v.issueDate) ? v.issueDate : now.slice(0, 10),
+    dueDate: ymdOk(v.dueDate) ? v.dueDate : '',
+    lines,
+    taxName: clip(v.taxName, 20) || settings.taxName,
+    taxRate: Math.min(50, Math.max(0, Number(v.taxRate) || 0)),
+    discount: Math.max(0, money2(v.discount)),
+    customFields: (Array.isArray(v.customFields) ? v.customFields : []).slice(0, 12)
+      .map((f) => ({ label: clip(f.label, 40), value: clip(f.value, 200) })).filter((f) => f.label || f.value),
+    notes: clip(v.notes, 1000),
+    createdBy: (prev && prev.createdBy) || user.u,
+    createdAt: (prev && prev.createdAt) || now,
+    updatedAt: now,
+    sentAt: (prev && prev.sentAt) || null,
+    paidAt: (prev && prev.paidAt) || null,
+  };
+  doc.totals = invoiceTotals(doc);
+  const key = await vput(store, `inv/${pid}/${id}`, doc);
+  return publicInvoice(pid, key, doc);
+}
+
+async function setInvoiceStatus(store, pid, id, status) {
+  if (!INV_ID_RE.test(String(id)) || !INV_STATUS.includes(status)) throw new HttpError(400, 'Unknown invoice.');
+  const r = await vlatest(store, `inv/${pid}/${id}`);
+  if (!r || r.doc.deleted) throw new HttpError(404, 'That invoice no longer exists.');
+  const now = new Date().toISOString();
+  const doc = {
+    ...r.doc, status, updatedAt: now,
+    paidAt: status === 'paid' ? (r.doc.paidAt || now) : null,
+    sentAt: status === 'sent' || status === 'paid' ? (r.doc.sentAt || now) : r.doc.sentAt,
+  };
+  const key = await vput(store, `inv/${pid}/${id}`, doc);
+  return publicInvoice(pid, key, doc);
+}
+
+async function deleteInvoice(store, pid, id) {
+  if (!INV_ID_RE.test(String(id))) throw new HttpError(400, 'Unknown invoice.');
+  const r = await vlatest(store, `inv/${pid}/${id}`);
+  if (!r) throw new HttpError(404, 'That invoice no longer exists.');
+  await vput(store, `inv/${pid}/${id}`, { ...r.doc, deleted: true, updatedAt: new Date().toISOString() });
+}
+
+/* ---- branded PDF ---- */
+
+let pdfLib = null;
+const winAnsi = (s) => String(s == null ? '' : s)
+  .replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, '...')
+  .replace(/[^\x20-\x7E -ÿ–—•€]/g, '');
+const prettyPhone = (p) => {
+  const d = String(p || '').replace(/\D/g, '');
+  if (d.length === 11 && d[0] === '1') return `(${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+  return p || '';
+};
+const cad = (n) => `$${(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const prettyDate = (ymd) => (ymd ? new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
+
+async function brandLogo(store, rec, origin) {
+  const b = rec && rec.brand;
+  if (!b || b.hasLogo === false) return null;
+  try {
+    if (b.blob) return await store.get(`asset/${b.slug}/logo.png`);
+    const res = await fetch(`${origin}/brands/${b.slug}/logo.png`);
+    return res.ok ? Buffer.from(await res.arrayBuffer()) : null;
+  } catch { return null; }
+}
+
+async function renderInvoicePdf(inv, settings, brandColor, logoBytes) {
+  if (!pdfLib) pdfLib = require('pdf-lib');
+  const { PDFDocument, StandardFonts, rgb } = pdfLib;
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(winAnsi(`Invoice ${inv.number}`));
+  pdf.setAuthor(winAnsi(settings.businessName));
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const hex = String(brandColor || '#1F2937').replace('#', '');
+  const c = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const brand = rgb(c[0], c[1], c[2]);
+  const lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const onBrand = lum > 0.6 ? rgb(0.08, 0.08, 0.08) : rgb(1, 1, 1);
+  const ink = rgb(0.09, 0.1, 0.12);
+  const muted = rgb(0.42, 0.45, 0.5);
+  const rule = rgb(0.88, 0.89, 0.91);
+  const W = 612; const H = 792; const M = 44;
+
+  let page = pdf.addPage([W, H]);
+  const text = (s, x, y, size = 10, f = font, color = ink) => page.drawText(winAnsi(s), { x, y, size, font: f, color });
+  const width = (s, size = 10, f = font) => f.widthOfTextAtSize(winAnsi(s), size);
+  const right = (s, xr, y, size = 10, f = font, color = ink) => text(s, xr - width(s, size, f), y, size, f, color);
+  const wrap = (s, maxW, size = 10, f = font) => {
+    const out = [];
+    for (const para of winAnsi(s).split('\n')) {
+      let line = '';
+      for (const word of para.split(/\s+/)) {
+        const t = line ? `${line} ${word}` : word;
+        if (width(t, size, f) <= maxW) line = t;
+        else { if (line) out.push(line); line = word; }
+      }
+      out.push(line);
+    }
+    return out;
+  };
+
+  // Header band
+  page.drawRectangle({ x: 0, y: H - 8, width: W, height: 8, color: brand });
+  let y = H - 40;
+  let logoBottom = y;
+  if (logoBytes) {
+    try {
+      const img = await pdf.embedPng(logoBytes);
+      const s = Math.min(170 / img.width, 64 / img.height);
+      page.drawImage(img, { x: M, y: y - img.height * s, width: img.width * s, height: img.height * s });
+      logoBottom = y - img.height * s - 10;
+    } catch { /* not a PNG: skip */ }
+  }
+  right('INVOICE', W - M, y - 22, 26, bold, brand);
+  right(`# ${inv.number}`, W - M, y - 40, 11, bold);
+  const meta = [['Issued', prettyDate(inv.issueDate)], inv.dueDate ? ['Due', prettyDate(inv.dueDate)] : null].filter(Boolean);
+  meta.forEach(([k, v], i) => { right(`${k}: ${v}`, W - M, y - 56 - i * 14, 10, font, muted); });
+  if (inv.status === 'paid') {
+    const stamp = 'PAID';
+    page.drawRectangle({ x: W - M - 74, y: y - 106, width: 74, height: 24, borderColor: rgb(0.1, 0.6, 0.3), borderWidth: 2 });
+    text(stamp, W - M - 74 + (74 - width(stamp, 14, bold)) / 2, y - 99, 14, bold, rgb(0.1, 0.6, 0.3));
+  }
+
+  // From
+  y = Math.min(logoBottom, y - 70);
+  text(settings.businessName || '', M, y, 12, bold);
+  y -= 14;
+  const fromLines = [
+    ...wrap(settings.address, 240, 9.5), prettyPhone(settings.phone), settings.email, settings.website,
+    settings.taxNumber ? `${settings.taxNumberLabel || 'Tax #'} ${settings.taxNumber}` : '',
+  ].filter(Boolean);
+  for (const l of fromLines) { text(l, M, y, 9.5, font, muted); y -= 12.5; }
+
+  // Bill to + details
+  y -= 14;
+  const topOfBlocks = y;
+  text('BILL TO', M, y, 8.5, bold, muted);
+  y -= 15;
+  text(inv.customer.name, M, y, 11.5, bold);
+  y -= 14;
+  for (const l of [...wrap(inv.customer.address, 250, 9.5), prettyPhone(inv.customer.phone), inv.customer.email].filter(Boolean)) {
+    text(l, M, y, 9.5, font, muted); y -= 12.5;
+  }
+  let y2 = topOfBlocks;
+  if (inv.customFields.length) {
+    text('DETAILS', 330, y2, 8.5, bold, muted);
+    y2 -= 15;
+    for (const f of inv.customFields) {
+      const lines = wrap(f.value, 150, 9.5);
+      text(f.label, 330, y2, 9.5, bold);
+      lines.forEach((l, i) => right(l, W - M, y2 - i * 12, 9.5, font, ink));
+      y2 -= Math.max(1, lines.length) * 12 + 3;
+    }
+  }
+  y = Math.min(y, y2) - 18;
+
+  // Line items
+  const cols = { desc: M + 10, qty: 336, price: 440, amt: W - M - 10 };
+  const header = () => {
+    page.drawRectangle({ x: M, y: y - 8, width: W - 2 * M, height: 24, color: brand });
+    text('DESCRIPTION', cols.desc, y, 8.5, bold, onBrand);
+    right('QTY', cols.qty, y, 8.5, bold, onBrand);
+    right('PRICE', cols.price, y, 8.5, bold, onBrand);
+    right('AMOUNT', cols.amt, y, 8.5, bold, onBrand);
+    y -= 26;
+  };
+  header();
+  inv.lines.forEach((l, i) => {
+    const lines = wrap(l.desc || '-', cols.qty - cols.desc - 50, 10);
+    const h = lines.length * 13 + 10;
+    if (y - h < 150) { page = pdf.addPage([W, H]); y = H - 60; header(); }
+    if (i % 2 === 1) page.drawRectangle({ x: M, y: y - h + 13, width: W - 2 * M, height: h, color: rgb(0.97, 0.975, 0.98) });
+    lines.forEach((t, j) => text(t, cols.desc, y - j * 13, 10));
+    right(String(l.qty), cols.qty, y, 10);
+    right(cad(l.price), cols.price, y, 10);
+    right(cad(l.qty * l.price), cols.amt, y, 10, bold);
+    y -= h;
+  });
+  page.drawLine({ start: { x: M, y: y + 6 }, end: { x: W - M, y: y + 6 }, thickness: 1, color: rule });
+
+  // Totals
+  y -= 12;
+  const t = inv.totals;
+  const rows = [['Subtotal', cad(t.subtotal)]];
+  if (t.discount > 0) rows.push(['Discount', `-${cad(t.discount)}`]);
+  if (inv.taxRate > 0) rows.push([`${inv.taxName || 'Tax'} (${inv.taxRate}%)`, cad(t.tax)]);
+  for (const [k, v] of rows) { right(k, 470, y, 10, font, muted); right(v, W - M - 10, y, 10); y -= 16; }
+  y -= 12;
+  page.drawRectangle({ x: 330, y: y - 12, width: W - M - 330, height: 30, color: brand });
+  text(inv.status === 'paid' ? 'PAID' : 'TOTAL DUE', 342, y - 2, 11, bold, onBrand);
+  right(cad(t.total), W - M - 10, y - 2, 13, bold, onBrand);
+  y -= 44;
+
+  // Notes, payment, terms
+  const block = (title, body) => {
+    if (!body) return;
+    const lines = wrap(body, W - 2 * M, 9.5);
+    if (y - lines.length * 12 - 20 < 50) { page = pdf.addPage([W, H]); y = H - 60; }
+    text(title, M, y, 8.5, bold, muted); y -= 14;
+    for (const l of lines) { text(l, M, y, 9.5); y -= 12; }
+    y -= 10;
+  };
+  block('NOTES', inv.notes);
+  block('HOW TO PAY', settings.payment);
+  block('TERMS', settings.terms);
+
+  // Footer on every page
+  for (const p of pdf.getPages()) {
+    const foot = [settings.businessName, prettyPhone(settings.phone), settings.email].filter(Boolean).join('  |  ');
+    p.drawText(winAnsi(foot), { x: (W - width(foot, 8.5)) / 2, y: 26, size: 8.5, font, color: muted });
+  }
+  return Buffer.from(await pdf.save());
+}
+
+async function invoicePdfResponse(store, token, origin) {
+  const [payload, sig] = String(token || '').split('.');
+  if (!payload || !sig || sign(`inv.${payload}`).slice(0, 24) !== sig) throw new HttpError(404, 'Not found.');
+  const { p: pid, k: key } = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+  if (!String(key).startsWith(`inv/${pid}/`)) throw new HttpError(404, 'Not found.');
+  const inv = await store.get(key, { type: 'json' });
+  if (!inv || inv.deleted) throw new HttpError(404, 'This invoice is no longer available.');
+  const owner = (await allUsers(store)).find((x) => !x.admin && x.p === pid) || null;
+  const settings = await invoiceSettings(store, pid, owner ? owner.n : '');
+  const bytes = await renderInvoicePdf(inv, settings, owner && owner.brand ? owner.brand.color : null, await brandLogo(store, owner, origin));
+  const file = `Invoice-${String(inv.number).replace(/[^A-Za-z0-9-]/g, '')}.pdf`;
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${file}"`, 'Cache-Control': 'private, max-age=300' },
+    body: bytes.toString('base64'),
+    isBase64Encoded: true,
+  };
+}
+
+/* ---- send through GHL (needs the token's "conversations/message.write" permission) ---- */
+
+async function sendInvoice(store, user, pid, body, origin) {
+  if (!INV_ID_RE.test(String(body.id))) throw new HttpError(400, 'Unknown invoice.');
+  const via = body.via === 'sms' ? 'sms' : 'email';
+  const r = await vlatest(store, `inv/${pid}/${body.id}`);
+  if (!r || r.doc.deleted) throw new HttpError(404, 'That invoice no longer exists.');
+  const inv = r.doc;
+  const owner = (await allUsers(store)).find((x) => !x.admin && x.p === pid);
+  const settings = await invoiceSettings(store, pid, owner ? owner.n : user.n);
+  const link = `${origin}/api/invoice-pdf?t=${pdfToken(pid, r.key)}`;
+  if (via === 'sms' && !inv.customer.phone) throw new HttpError(400, 'Add the customer\'s phone number first.');
+  if (via === 'email' && !inv.customer.email) throw new HttpError(400, 'Add the customer\'s email first.');
+
+  let contactId = inv.contactId;
+  try {
+    if (!contactId) {
+      const u = await ghl('POST', '/contacts/upsert', {
+        locationId: loc(), name: inv.customer.name, email: inv.customer.email || undefined, phone: inv.customer.phone || undefined,
+      });
+      contactId = (u.contact && u.contact.id) || u.id;
+    }
+    const first = inv.customer.name.split(/\s+/)[0];
+    const total = cad(inv.totals.total);
+    if (via === 'sms') {
+      await ghl('POST', '/conversations/messages', {
+        type: 'SMS', contactId,
+        message: `Hi ${first}, here's your invoice ${inv.number} from ${settings.businessName} for ${total}: ${link}`,
+      });
+    } else {
+      const esc = (s) => String(s || '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+      await ghl('POST', '/conversations/messages', {
+        type: 'Email', contactId,
+        subject: `Invoice ${inv.number} from ${settings.businessName}`,
+        html: `<p>Hi ${esc(first)},</p><p>Thank you for choosing ${esc(settings.businessName)}. Your invoice <b>${esc(inv.number)}</b> for <b>${esc(total)}</b> is ready.</p>`
+          + `<p><a href="${esc(link)}">View or download your invoice (PDF)</a></p>`
+          + (settings.payment ? `<p>${esc(settings.payment).replace(/\n/g, '<br>')}</p>` : '')
+          + `<p>${esc(settings.businessName)}${settings.phone ? `<br>${esc(settings.phone)}` : ''}</p>`,
+      });
+    }
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 502) {
+      return { sent: false, needsSetup: true, link };
+    }
+    throw e;
+  }
+  const updated = inv.status === 'paid' ? publicInvoice(pid, r.key, inv) : await setInvoiceStatus(store, pid, inv.id, 'sent');
+  return { sent: true, invoice: updated };
+}
+
 /* ---------------- HTTP plumbing ---------------- */
 
 function reply(status, body, extraHeaders) {
@@ -829,6 +1268,10 @@ function parseBody(event) {
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const originOf = (event) => {
+  const h = event.headers || {};
+  return `${h['x-forwarded-proto'] || 'https'}://${h['x-forwarded-host'] || h.host}`;
+};
 
 async function findBySlug(store, slug) {
   if (store) {
@@ -897,6 +1340,11 @@ exports.handler = async (event) => {
   try {
     if (route === 'health' && method === 'GET') {
       return reply(200, { ok: true, node: process.version, storage: store ? store.mode : 'none' });
+    }
+
+    if (route === 'invoice-pdf' && method === 'GET') {
+      if (!store) throw new HttpError(503, 'Invoices are not available right now.');
+      return await invoicePdfResponse(store, q.t, originOf(event));
     }
 
     if (route === 'ics' && method === 'GET') {
@@ -1024,6 +1472,28 @@ exports.handler = async (event) => {
       await ghl('POST', `/contacts/${enc(cid)}/tags`, { tags: [add] });
       await ghl('DELETE', `/contacts/${enc(cid)}/tags`, { tags: [remove] }).catch(() => {});
       return reply(200, { id: o.id, meta });
+    }
+
+    if (route === 'invoices' && method === 'GET') {
+      const p = await bookingPipeline(user, q.pipeline);
+      const settings = await invoiceSettings(store, p.id, await clientNameFor(store, p.id, user));
+      return reply(200, { pipelineId: p.id, settings, invoices: store ? await listInvoices(store, p.id) : [] });
+    }
+
+    if (route === 'invoices' && method === 'POST') {
+      if (!store) throw new HttpError(503, 'Invoices are not available right now.');
+      const body = parseBody(event);
+      const p = await bookingPipeline(user, body.pipeline);
+      if (body.action === 'save') return reply(200, { invoice: await saveInvoice(store, user, p.id, body) });
+      if (body.action === 'status') return reply(200, { invoice: await setInvoiceStatus(store, p.id, body.id, body.status) });
+      if (body.action === 'delete') { await deleteInvoice(store, p.id, body.id); return reply(200, { deleted: body.id }); }
+      if (body.action === 'settings') {
+        const settings = cleanSettings(body.settings || {});
+        await vput(store, `invcfg/${p.id}`, settings);
+        return reply(200, { settings });
+      }
+      if (body.action === 'send') return reply(200, await sendInvoice(store, user, p.id, body, originOf(event)));
+      throw new HttpError(400, 'Unknown action.');
     }
 
     if (route === 'bookings' && method === 'GET') {

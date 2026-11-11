@@ -18,7 +18,7 @@ createServer(async (req, res) => {
     let body = '';
     for await (const c of req) body += c;
     const out = await handler({
-      path: url.pathname, httpMethod: req.method, headers: req.headers,
+      path: url.pathname, httpMethod: req.method, headers: { ...req.headers, 'x-forwarded-proto': 'http' },
       queryStringParameters: Object.fromEntries(url.searchParams), body: body || null, isBase64Encoded: false,
     });
     res.writeHead(out.statusCode, out.headers);

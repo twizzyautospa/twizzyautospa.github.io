@@ -7,7 +7,8 @@
     "dev": "node scripts/dev.mjs"
   },
   "dependencies": {
-    "@netlify/blobs": "8.2.0"
+    "@netlify/blobs": "8.2.0",
+    "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
     "esbuild": "0.24.2"

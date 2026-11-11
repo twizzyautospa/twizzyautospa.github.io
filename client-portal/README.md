@@ -22,6 +22,28 @@ phone / browser ──► public/ (static app) ──► /api/* ──► netlif
 - Clients can: move stage, set a job value, add notes (saved on the GHL contact, prefixed
   `[Portal · Client Name]`), and tap to call / text / email.
 
+## Home, tabs and invoices
+
+The portal opens on **Home**, with tabs **Home | Leads | Calendar | Invoices**.
+
+- **Home**: greeting, four KPI tiles (new leads in 7 days and % from Meta, jobs this week, revenue this month,
+  unpaid invoices), jobs to wrap up, "call these first" and overdue-invoice nudges, today's and upcoming jobs,
+  a stage-by-stage pipeline snapshot, and recent invoices.
+- **Invoices**: outstanding / paid-this-month totals, All / Unpaid / Paid / Drafts filters.
+  - *New invoice* (optionally filled from a lead) or *Create invoice* on any booked job (customer, address,
+    job line, price and service date filled in).
+  - Editable lines (description, qty, price), tax name and %, discount, any number of custom fields
+    (label + value, e.g. PO #, warranty), notes. Numbering is automatic per client (`<prefix><n>`, e.g. TB-1001)
+    and can be overridden per invoice.
+  - Branded PDF (client logo and colour, business details, PAID stamp) from `/api/invoice-pdf` behind a signed link.
+  - *Text it* / *Email it*: sent through GHL from the account's number/email when the token has the
+    **conversations/message.write** permission; otherwise the phone's Messages/Mail app opens with the message
+    and link ready. *Share…* / *Copy link* also available. Mark paid / unpaid, edit, duplicate, delete.
+  - **Invoice settings** (gear): business name, address, phone, email, website, tax number, default tax,
+    due days, number prefix and first number, how to pay, terms.
+  - Storage: every save is a new version key `inv/<pipelineId>/<invoiceId>/<version>` (and settings at
+    `invcfg/<pipelineId>/<version>`), so a sent link always shows exactly that version.
+
 ## Meta lead marking
 
 Every lead has a **Did this lead come from Meta?** choice (From Meta / Not from Meta) in its panel, and lead
