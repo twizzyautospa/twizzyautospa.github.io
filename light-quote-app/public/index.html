@@ -3,36 +3,382 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0b1430">
-  <title>Lumiquote</title>
-  <link rel="stylesheet" href="/css/app.css">
+  <meta name="theme-color" content="#0a1128">
+  <title>Lumiquote · Quoting software for Christmas light installers</title>
+  <meta name="description" content="Lumiquote shows homeowners their own home lit up with a price, then lets you measure, quote and book from your phone. One payment. Yours for life. Your logo on every page.">
+  <meta property="og:title" content="Lumiquote · Quoting software for Christmas light installers">
+  <meta property="og:description" content="Show homeowners their home lit up, quote from satellite, and book the job by text. Buy it once and own it for life.">
+  <meta property="og:type" content="website">
+  <link rel="stylesheet" href="/css/site.css">
 </head>
-<body class="staff">
-  <div class="auth auth-single">
-    <section class="auth-hero">
-      <div class="auth-brand">
-        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3a9 9 0 0 0-5.2 16.3c.8.6 1.2 1.4 1.2 2.3V23h8v-1.4c0-.9.4-1.700 1.200-2.300A9 9 0 0 0 16 3z" fill="#ffd27a"/><rect x="12" y="24.500" width="8" height="2" rx="1" fill="#c8d2e8"/><rect x="13" y="27.500" width="6" height="2" rx="1" fill="#c8d2e8"/></svg>
-        <span data-platform-name>Lumiquote</span>
-      </div>
-      <div class="auth-pitch">
-        <h1>Quoting and booking for Christmas light installers.</h1>
-        <p>Homeowners see their own home lit up, get a price, and book. You measure from above and text the quote.</p>
-        <p><a class="btn btn-lg" href="/login">Installer sign in</a></p>
-        <p class="small">Looking for your quote? Use the link your installer sent you.</p>
-      </div>
-      <a class="powered powered-dark" href="https://leadthruagency.com" target="_blank" rel="noopener">
-        <span>Powered by</span>
-        <svg viewBox="0 0 100 100" aria-hidden="true"><path d="M22 8 L40 18 L40 62 L64 62 L64 44 L92 68 L64 92 L64 74 L22 74 Z" fill="currentColor"/></svg>
-        <strong>LeadThru</strong>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="top" id="top">
+    <div class="wrap top-row">
+      <a class="logo" href="/" aria-label="Lumiquote home">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3a9 9 0 0 0-5.2 16.3c.8.6 1.2 1.4 1.2 2.3V23h8v-1.4c0-.9.4-1.7 1.2-2.3A9 9 0 0 0 16 3z" fill="#ffc857"/><rect x="12" y="24.500" width="8" height="2" rx="1" fill="currentColor" opacity=".7"/><rect x="13" y="27.500" width="6" height="2" rx="1" fill="currentColor" opacity=".7"/></svg>
+        <span>Lumiquote</span>
       </a>
+      <nav class="top-nav" aria-label="Sections">
+        <a href="#how">How it works</a>
+        <a href="#try">Try it</a>
+        <a href="#own">Own it for life</a>
+        <a href="#brand">Your brand</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="top-actions">
+        <a class="top-phone" href="tel:+16478830113" aria-label="Call 647 883 0113">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.600 10.800a15 15 0 0 0 6.600 6.600l2.200-2.200a1 1 0 0 1 1-.25c1.100.37 2.300.57 3.600.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.500a1 1 0 0 1 1 1c0 1.250.2 2.450.57 3.570a1 1 0 0 1-.25 1z" fill="currentColor"/></svg>
+          <span>(647) 883-0113</span>
+        </a>
+        <a class="btn btn-outline btn-sm" href="/login">Log in</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- hero -->
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Quoting software for Christmas light installers</p>
+          <h1>Show them their home lit up. <span class="glow">Book the job before you drive out.</span></h1>
+          <p class="lead">Lumiquote turns a homeowner's photo into a lit-up preview with a price, then lets you measure, quote and book from your phone. Buy it once. Own it for life.</p>
+          <div class="cta-row">
+            <a class="btn btn-gold btn-lg" href="tel:+16478830113">Call (647) 883-0113</a>
+            <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
+          </div>
+          <ul class="hero-points">
+            <li>No monthly fees</li>
+            <li>Your logo on every page</li>
+            <li>Works on any phone</li>
+          </ul>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <svg class="scene" id="hero-scene" viewBox="0 0 320 220"></svg>
+        </div>
+      </div>
     </section>
-  </div>
-  <script type="module">
-    import { $$, api } from "/js/lib.js";
-    api("public/platform").then((p) => {
-      $$("[data-platform-name]").forEach((el) => (el.textContent = p.name));
-      document.title = p.name;
-    }).catch(() => {});
-  </script>
+
+    <!-- three facts -->
+    <section class="facts" aria-label="At a glance">
+      <div class="wrap facts-grid">
+        <div><strong>About 2 minutes</strong><span>for a homeowner to ask for a quote, from your ad or website</span></div>
+        <div><strong>One payment</strong><span>a licence you own, not software you rent every month</span></div>
+        <div><strong>100% your brand</strong><span>your logo, your colours and your prices on every customer page</span></div>
+      </div>
+    </section>
+
+    <!-- how it works -->
+    <section class="band light" id="how">
+      <div class="wrap">
+        <p class="eyebrow">How it works</p>
+        <h2>From "how much?" to booked, without the site visit.</h2>
+        <ol class="steps">
+          <li>
+            <span class="step-n">1</span>
+            <h3>They tap your link</h3>
+            <p>From your ads, your website or a text. A short quiz asks what they want lit: roofline, trees and shrubs, or the full house.</p>
+          </li>
+          <li>
+            <span class="step-n">2</span>
+            <h3>They see their own home lit up</h3>
+            <p>They add a photo and get a preview of their house in warm white, bright white and multicolour, with a price range beside it.</p>
+          </li>
+          <li>
+            <span class="step-n">3</span>
+            <h3>You measure from above</h3>
+            <p>The request lands on your phone. Trace the roofline on a satellite view and the quote fills itself in at your own rates.</p>
+          </li>
+          <li>
+            <span class="step-n">4</span>
+            <h3>You text the quote, they book</h3>
+            <p>One tap sends it. They accept on their phone and pick an install date. You show up to hang lights, not to give a price.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- interactive demo -->
+    <section class="band dark" id="try">
+      <div class="wrap">
+        <p class="eyebrow">Try it</p>
+        <h2>This is what your customer sees.</h2>
+        <p class="sub">Change the options the way a homeowner would. Then put your own name on it.</p>
+
+        <div class="demo">
+          <div class="demo-controls">
+            <fieldset>
+              <legend>What do they want lit?</legend>
+              <div class="seg" data-group="service">
+                <button type="button" data-value="roofline" aria-pressed="true">Roofline</button>
+                <button type="button" data-value="trees" aria-pressed="false">Trees &amp; shrubs</button>
+                <button type="button" data-value="full" aria-pressed="false">Full house</button>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>How big is the home?</legend>
+              <div class="seg" data-group="size">
+                <button type="button" data-value="small" aria-pressed="false">Small</button>
+                <button type="button" data-value="medium" aria-pressed="true">Medium</button>
+                <button type="button" data-value="large" aria-pressed="false">Large</button>
+                <button type="button" data-value="xl" aria-pressed="false">Extra large</button>
+              </div>
+            </fieldset>
+            <fieldset class="make-yours">
+              <legend>Now make it yours</legend>
+              <label class="field">
+                <span>Your company name</span>
+                <input type="text" id="demo-name" maxlength="28" placeholder="Your company" autocomplete="organization">
+              </label>
+              <div class="field">
+                <span id="swatch-label">Your brand colour</span>
+                <div class="swatches" role="group" aria-labelledby="swatch-label">
+                  <button type="button" data-color="#c8102e" aria-pressed="true" aria-label="Red" style="--c:#c8102e"></button>
+                  <button type="button" data-color="#1f6f3d" aria-pressed="false" aria-label="Green" style="--c:#1f6f3d"></button>
+                  <button type="button" data-color="#1d4fd8" aria-pressed="false" aria-label="Blue" style="--c:#1d4fd8"></button>
+                  <button type="button" data-color="#b7791f" aria-pressed="false" aria-label="Gold" style="--c:#b7791f"></button>
+                  <button type="button" data-color="#16181d" aria-pressed="false" aria-label="Black" style="--c:#16181d"></button>
+                  <label class="swatch-pick" aria-label="Pick any colour"><input type="color" id="demo-color" value="#c8102e"></label>
+                </div>
+              </div>
+            </fieldset>
+            <p class="fineprint">Example prices shown. You set your own rate per foot, tree prices and minimum job.</p>
+          </div>
+
+          <div class="phone" id="phone" aria-live="polite">
+            <div class="phone-bar">
+              <strong id="demo-company">Your Company</strong>
+              <span class="phone-tel" id="demo-tel">Call us</span>
+            </div>
+            <div class="phone-scene">
+              <svg class="scene" id="demo-scene" viewBox="0 0 320 220" role="img" aria-label="Preview of a house with holiday lights"></svg>
+              <span class="phone-tag">Preview of their home</span>
+            </div>
+            <div class="phone-tabs seg" data-group="color">
+              <button type="button" data-value="warm" aria-pressed="true">Warm white</button>
+              <button type="button" data-value="cool" aria-pressed="false">Bright white</button>
+              <button type="button" data-value="multi" aria-pressed="false">Multicolour</button>
+            </div>
+            <div class="phone-price">
+              <span>Estimated price</span>
+              <strong id="demo-price">$550 – $750</strong>
+              <small id="demo-what">Roofline · Medium home</small>
+            </div>
+            <span class="phone-cta" id="demo-cta">Accept and book</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- saves time -->
+    <section class="band light" id="time">
+      <div class="wrap">
+        <p class="eyebrow">It saves your evenings</p>
+        <h2>Stop driving across town to give a number.</h2>
+        <div class="split">
+          <div class="compare">
+            <div class="compare-col old">
+              <h3>The old way</h3>
+              <ul>
+                <li>Drive out to every house that asks for a price</li>
+                <li>Walk the roofline with a measuring wheel</li>
+                <li>Write quotes at night after the installs are done</li>
+                <li>Chase people by phone to see if they want it</li>
+              </ul>
+            </div>
+            <div class="compare-col new">
+              <h3>With Lumiquote</h3>
+              <ul>
+                <li>Homeowners price themselves in from your link</li>
+                <li>Measure from a satellite view in under a minute</li>
+                <li>The quote builds itself from your rates</li>
+                <li>They accept and pick a date on their own phone</li>
+              </ul>
+            </div>
+          </div>
+          <div class="calc" aria-labelledby="time-title">
+            <h3 id="time-title">What is that worth to you?</h3>
+            <label class="slider">
+              <span>Quotes you give in a busy week <output id="t-quotes-out">20</output></span>
+              <input type="range" id="t-quotes" min="5" max="60" step="1" value="20">
+            </label>
+            <label class="slider">
+              <span>Minutes each one costs you today <output id="t-mins-out">40</output></span>
+              <input type="range" id="t-mins" min="10" max="90" step="5" value="40">
+            </label>
+            <p class="calc-result"><strong id="t-hours">133 hours</strong> over a ten-week season.</p>
+            <p class="calc-note" id="t-days">That is about 17 full working days you could spend installing.</p>
+            <p class="fineprint">Worked out from the numbers you set above.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- own it -->
+    <section class="band dark" id="own">
+      <div class="wrap">
+        <p class="eyebrow">Own it for life</p>
+        <h2>Buy it once. It is yours.</h2>
+        <p class="sub">Most software rents you your own tools. Miss a payment and your quote link, your dashboard and your leads go dark. Lumiquote is a one-time licence.</p>
+        <div class="split">
+          <div class="own-table" role="table" aria-label="Renting software compared with owning Lumiquote">
+            <div role="row" class="own-head"><span role="columnheader"></span><span role="columnheader">Monthly software</span><span role="columnheader">Lumiquote</span></div>
+            <div role="row"><span role="rowheader">How you pay</span><span role="cell">Every month, forever</span><span role="cell">Once</span></div>
+            <div role="row"><span role="rowheader">In the off-season</span><span role="cell">Still billed</span><span role="cell">Nothing to pay</span></div>
+            <div role="row"><span role="rowheader">If you stop paying</span><span role="cell">You lose access</span><span role="cell">Nothing changes</span></div>
+            <div role="row"><span role="rowheader">Whose brand customers see</span><span role="cell">Often theirs</span><span role="cell">Yours only</span></div>
+            <div role="row"><span role="rowheader">Price goes up next year</span><span role="cell">Their call</span><span role="cell">Already paid</span></div>
+          </div>
+          <div class="calc" aria-labelledby="rent-title">
+            <h3 id="rent-title">Add up the rent</h3>
+            <label class="slider">
+              <span>A monthly plan at <output id="r-fee-out">$199</output> a month</span>
+              <input type="range" id="r-fee" min="49" max="499" step="10" value="199">
+            </label>
+            <label class="slider">
+              <span>Kept for <output id="r-years-out">5 years</output></span>
+              <input type="range" id="r-years" min="1" max="10" step="1" value="5">
+            </label>
+            <p class="calc-result"><strong id="r-total">$11,940</strong> paid, and you own nothing.</p>
+            <p class="calc-note">Lumiquote is one payment. Call and we will tell you the number.</p>
+            <a class="btn btn-gold" href="tel:+16478830113">Call (647) 883-0113</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- white label -->
+    <section class="band light" id="brand">
+      <div class="wrap">
+        <p class="eyebrow">White label and fully adjustable</p>
+        <h2>Your name on it. Not ours.</h2>
+        <p class="sub">Homeowners never see the word Lumiquote. They see your company, and everything about how it prices is yours to set.</p>
+        <div class="grid">
+          <article class="card">
+            <h3>Your logo and colours</h3>
+            <p>Every customer page carries your logo, your brand colour and your phone number.</p>
+          </article>
+          <article class="card">
+            <h3>Your prices</h3>
+            <p>Set your rate per foot, tree and shrub prices, storey multipliers and minimum job. Change them any time.</p>
+          </article>
+          <article class="card">
+            <h3>Your call on showing price</h3>
+            <p>Show a price range, a single instant price they can book on the spot, or no price until you have measured.</p>
+          </article>
+          <article class="card">
+            <h3>Your install dates</h3>
+            <p>Offer the dates that suit your crew. The customer picks one when they accept.</p>
+          </article>
+          <article class="card">
+            <h3>Your own link</h3>
+            <p>One link for your ads, website, yard signs and texts. Every request lands in your dashboard.</p>
+          </article>
+          <article class="card">
+            <h3>Your CRM</h3>
+            <p>Connects to GoHighLevel, Zapier and anything that takes a webhook, so leads and bookings show up where you already work.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- included -->
+    <section class="band dark" id="included">
+      <div class="wrap">
+        <p class="eyebrow">What you get</p>
+        <h2>Everything you need for the season.</h2>
+        <ul class="checks">
+          <li>A branded quote link for ads and your website</li>
+          <li>Lit-up previews of the customer's own home in three colours</li>
+          <li>Satellite roofline measuring</li>
+          <li>A quote builder that uses your rates</li>
+          <li>One-tap text or email of the quote</li>
+          <li>Online accept and install-date booking</li>
+          <li>A leads dashboard for phone and desktop</li>
+          <li>A Street View helper for customers who are not home</li>
+          <li>CRM connection</li>
+          <li>Set up for you with your logo, colours and prices</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- faq -->
+    <section class="band light" id="faq">
+      <div class="wrap narrow">
+        <p class="eyebrow">Questions</p>
+        <h2>Before you call.</h2>
+        <div class="faq">
+          <details>
+            <summary>Is there a monthly fee?</summary>
+            <p>No. Lumiquote is a one-time licence. You buy it once and it is yours.</p>
+          </details>
+          <details>
+            <summary>How much is it?</summary>
+            <p>Call or text <a href="tel:+16478830113">(647) 883-0113</a>. It is a single payment, and we will walk you through it on a live demo so you can see it working first.</p>
+          </details>
+          <details>
+            <summary>Will my customers know it is Lumiquote?</summary>
+            <p>No. They see your logo, your colours and your phone number. Our name is not on their pages.</p>
+          </details>
+          <details>
+            <summary>Do my customers need to download an app?</summary>
+            <p>No. It is a link that opens in the browser on any phone or computer.</p>
+          </details>
+          <details>
+            <summary>How accurate is the price they see?</summary>
+            <p>They see a range based on their home size and your rates. You confirm the exact price after you trace the roofline, so the final quote is always yours.</p>
+          </details>
+          <details>
+            <summary>What if the customer is not home to take a photo?</summary>
+            <p>The quiz offers to open Street View of their address so they can screenshot the house and upload that. They can also skip the photo and you still get the request.</p>
+          </details>
+          <details>
+            <summary>Can I change my prices mid-season?</summary>
+            <p>Yes. Rates, minimums, colours and how the price is shown can all be changed from your dashboard whenever you like.</p>
+          </details>
+          <details>
+            <summary>I am not a tech person. Is it hard to set up?</summary>
+            <p>We set it up for you with your logo, colours and prices. You get a link to share and a dashboard to check.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- final call -->
+    <section class="closer">
+      <div class="wrap narrow center">
+        <h2>Want to see it on your own house?</h2>
+        <p class="lead">Call or text and we will send you a live link. Run your own address through it, then decide.</p>
+        <div class="cta-row center">
+          <a class="btn btn-gold btn-lg" href="tel:+16478830113">Call (647) 883-0113</a>
+          <a class="btn btn-ghost btn-lg" href="sms:+16478830113?&body=I%20want%20to%20see%20Lumiquote">Text us instead</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-row">
+      <a class="logo" href="/">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3a9 9 0 0 0-5.2 16.3c.8.6 1.2 1.4 1.2 2.3V23h8v-1.4c0-.9.4-1.7 1.2-2.3A9 9 0 0 0 16 3z" fill="#ffc857"/><rect x="12" y="24.500" width="8" height="2" rx="1" fill="currentColor" opacity=".7"/><rect x="13" y="27.500" width="6" height="2" rx="1" fill="currentColor" opacity=".7"/></svg>
+        <span>Lumiquote</span>
+      </a>
+      <div class="foot-links">
+        <a href="tel:+16478830113">(647) 883-0113</a>
+        <a href="/login">Installer log in</a>
+        <a class="powered" href="https://leadthruagency.com" target="_blank" rel="noopener">
+          <span>Powered by</span>
+          <svg viewBox="0 0 100 100" aria-hidden="true"><path d="M22 8 L40 18 L40 62 L64 62 L64 44 L92 68 L64 92 L64 74 L22 74 Z" fill="currentColor"/></svg>
+          <strong>LeadThru</strong>
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <a class="call-bar" href="tel:+16478830113">Call (647) 883-0113</a>
+
+  <script src="/js/site.js" defer></script>
 </body>
 </html>
