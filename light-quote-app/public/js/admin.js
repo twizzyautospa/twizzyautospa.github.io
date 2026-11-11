@@ -130,6 +130,16 @@ function openManage(id) {
         <dt>Quote link</dt><dd><a href="${i.quoteLink}" target="_blank" rel="noopener">${i.quoteLink}</a></dd>
         <dt>Joined</dt><dd>${dateTime(i.createdAt)}</dd>
       </dl>
+      <form class="card card-flat stack" id="installer-edit" data-id="${i.id}" novalidate>
+        <div class="section-title" style="margin:0">Account details</div>
+        <label class="field"><span>Company name</span><input type="text" name="companyName" value="${i.companyName}" maxlength="80" required></label>
+        <div class="form-grid">
+          <label class="field"><span>Sign-in email</span><input type="email" name="email" value="${i.email}" required autocomplete="off"></label>
+          <label class="field"><span>Phone</span><input type="tel" name="phone" value="${i.phone}" autocomplete="off"></label>
+        </div>
+        ${i.email.endsWith(".invalid") ? html`<p class="notice notice-warn">This installer cannot sign in yet. Set their real email here, then set a password below.</p>` : ""}
+        <div><button type="submit" class="btn btn-secondary">Save details</button></div>
+      </form>
       <div class="card card-flat stack">
         <div class="section-title" style="margin:0">Access</div>
         <p class="small muted">${i.status === "active" ? "Pausing stops their quote link and sign-in. Their data is kept." : "This installer is paused. Their quote link and sign-in are off."}</p>
@@ -145,6 +155,12 @@ function openManage(id) {
       </div>
     </div>`);
   dialog.showModal();
+}
+
+/** Re-open the manage dialog with fresh data after a save. */
+function openManageRefresh(id) {
+  if (dialog.open) dialog.close();
+  openManage(id);
 }
 
 /* ---------- all leads ---------- */
@@ -287,6 +303,17 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
+  if (event.target.id === "installer-edit") {
+    event.preventDefault();
+    const form = event.target;
+    await busy(form.querySelector('button[type="submit"]'), async () => {
+      await api(`admin/installers/${form.dataset.id}`, { method: "PATCH", body: Object.fromEntries(new FormData(form)) });
+      toast("Details saved");
+      await showInstallers();
+      openManageRefresh(form.dataset.id);
+    });
+    return;
+  }
   if (event.target.id !== "installer-form") return;
   event.preventDefault();
   const form = event.target;

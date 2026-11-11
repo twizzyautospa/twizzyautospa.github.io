@@ -537,7 +537,18 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
     if (!action && req.method === "PATCH") {
       const body = await readJson(req);
       const status = oneOf(body.status, ["active", "suspended"] as const, installer.status as "active" | "suspended");
-      await sql()`UPDATE installers SET status = ${status} WHERE id = ${installer.id}`;
+      const companyName = body.companyName === undefined ? installer.companyName : str(body.companyName, 80);
+      const phone = body.phone === undefined ? installer.phone : str(body.phone, 40);
+      const email = body.email === undefined ? installer.email : str(body.email, 200).toLowerCase();
+      if (companyName.length < 2) fail(400, "Enter the company name");
+      if (!isEmail(email)) fail(400, "Enter a valid email address");
+      if (email !== installer.email) {
+        const taken = await sql()`SELECT 1 FROM installers WHERE email = ${email} AND id <> ${installer.id}`;
+        if (taken.length) fail(409, "An installer with that email already exists");
+      }
+      await sql()`
+        UPDATE installers SET status = ${status}, company_name = ${companyName}, phone = ${phone}, email = ${email}
+        WHERE id = ${installer.id}`;
       if (body.password !== undefined) {
         const hash = await hashPassword(validatePassword(body.password));
         await sql()`UPDATE installers SET password_hash = ${hash} WHERE id = ${installer.id}`;
