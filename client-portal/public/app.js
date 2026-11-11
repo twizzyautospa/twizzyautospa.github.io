@@ -436,6 +436,9 @@
 
   const findOpp = (id) => state.board && state.board.opportunities.find((o) => o.id === id);
 
+  // "Closed", "Job Closed", "Won", "Job Booked"… but never "Lost".
+  const isClosedStage = (st) => !!st && /\b(closed|won|booked)\b/i.test(st.name) && !/lost/i.test(st.name);
+
   async function moveTo(id, stageId) {
     const o = findOpp(id);
     if (!o || o.stageId === stageId) return;
@@ -448,6 +451,9 @@
       const r = await api('update', { id, stageId });
       Object.assign(o, { stageId: r.opportunity.stageId || stageId, stageChangedAt: new Date().toISOString() });
       toast(`Moved to ${stage ? stage.name : 'new stage'}`);
+      if (isClosedStage(stage) && !nextBooking(id)) {
+        setTimeout(() => openBookingForm({ oppId: id, lockLead: true, closing: true }), 150);
+      }
     } catch (ex) {
       o.stageId = prev;
       toast(ex.message, true);
@@ -1029,7 +1035,7 @@
   $('#bookerClose').addEventListener('click', () => closeBooker());
   $('#bkScrim').addEventListener('click', () => closeBooker());
 
-  function openBookingForm({ oppId = '', lockLead = false, day = null, time = null, edit = null } = {}) {
+  function openBookingForm({ oppId = '', lockLead = false, day = null, time = null, edit = null, closing = false } = {}) {
     if (!state.board) return;
     const tomorrow = dayKey(new Date(Date.now() + 864e5));
     let draft;
@@ -1039,11 +1045,15 @@
         id: edit.id, month: edit.month, oppId: edit.oppId, lockLead: true, title: edit.title,
         date: dayKey(s), time: `${pad2(s.getHours())}:${pad2(s.getMinutes())}`, minutes: edit.minutes,
         address: edit.address, notes: edit.notes, stageId: '', amount: edit.amount || '', setValue: false,
+        manual: !edit.oppId, lead: { ...edit.lead },
       };
     } else {
+      const lead = oppId ? findOpp(oppId) : null;
       draft = {
-        id: null, month: null, oppId, lockLead, title: 'Estimate', date: day || tomorrow, time: time || '09:00',
-        minutes: 60, address: '', notes: '', stageId: '', amount: '', setValue: true,
+        id: null, month: null, oppId, lockLead, title: closing ? 'Job' : 'Estimate', date: day || tomorrow, time: time || '09:00',
+        minutes: closing ? 120 : 60, address: '', notes: '', stageId: '',
+        amount: closing && lead && lead.value > 0 ? String(lead.value) : '', setValue: true, closing,
+        manual: false, lead: { name: '', phone: '', email: '' },
       };
     }
     booker.mode = 'form';
@@ -1060,12 +1070,23 @@
     const leads = state.board.opportunities.slice().sort((a, b) => a.name.localeCompare(b.name));
     const lenOpts = LENGTHS.some(([v]) => v === dr.minutes) ? LENGTHS : [...LENGTHS, [dr.minutes, fmtLen(dr.minutes)]];
     $('#bookerBody').innerHTML = `
-      <h2 id="bookerTitle">${dr.id ? 'Edit appointment' : 'Book appointment'}</h2>
-      <p class="sub">${o && dr.lockLead ? esc(o.name) : 'Pick the lead, then the time.'}</p>
+      <h2 id="bookerTitle">${dr.id ? 'Edit appointment' : dr.closing ? 'Schedule the job' : 'Book appointment'}</h2>
+      <p class="sub">${dr.closing
+        ? `${esc(o ? o.name : 'This lead')} is closed. Add the job date and price so it shows in your calendar and revenue.`
+        : dr.manual ? "Someone who isn't in your leads. Their details stay in your calendar only."
+          : o && dr.lockLead ? esc(o.name) : 'Pick the lead, then the time.'}</p>
       <form class="cf" id="bkForm" novalidate>
-        ${dr.lockLead && o ? '' : `<label class="field"><span>Lead</span><select id="bkLead">
+        ${dr.manual ? `<div class="field"><span>Customer</span>
+            <input id="bkName" maxlength="80" autocomplete="name" placeholder="Full name" value="${esc(dr.lead.name)}" aria-label="Customer name">
+            <div class="row2 manual-row">
+              <input id="bkPhone" type="tel" maxlength="30" autocomplete="tel" placeholder="Phone" value="${esc(dr.lead.phone)}" aria-label="Customer phone">
+              <input id="bkEmail" type="email" maxlength="120" autocomplete="email" placeholder="Email (optional)" value="${esc(dr.lead.email)}" aria-label="Customer email">
+            </div>
+            ${dr.id ? '' : `<button type="button" class="link-btn" id="bkPickLead">${icon('back')}Pick from my leads instead</button>`}</div>`
+        : dr.lockLead && o ? '' : `<label class="field"><span>Lead</span><select id="bkLead">
           <option value="">Choose a lead…</option>${leads.map((l) => `<option value="${esc(l.id)}"${l.id === dr.oppId ? ' selected' : ''}>${
-            esc(l.name)}${l.contact.phone ? ` · ${esc(phonePretty(l.contact.phone))}` : ''}</option>`).join('')}</select></label>`}
+            esc(l.name)}${l.contact.phone ? ` · ${esc(phonePretty(l.contact.phone))}` : ''}</option>`).join('')}</select></label>
+          <button type="button" class="btn sm ghost manual-btn" id="bkManual">${icon('plus')}Book someone who isn't in your leads</button>`}
         <div class="field"><span>What</span>
           <div class="quick">${KINDS.map((k) => `<button type="button" class="qchip${k === dr.title ? ' on' : ''}" data-kind="${esc(k)}">${esc(k)}</button>`).join('')}</div>
           <input id="bkTitle" maxlength="60" value="${esc(dr.title)}" aria-label="What is booked"></div>
@@ -1077,15 +1098,16 @@
         <div class="field"><span>Price (optional)</span>
           <div class="price"><input id="bkAmount" inputmode="decimal" placeholder="0" value="${esc(dr.amount)}" aria-label="Price in dollars"></div>
           <span class="hint">Counts toward your weekly and monthly revenue.</span></div>
-        <label class="check"><input type="checkbox" id="bkSetValue"${dr.setValue ? ' checked' : ''}> Also save it as this lead's job value</label>
+        ${dr.manual ? '' : `<label class="check"><input type="checkbox" id="bkSetValue"${dr.setValue ? ' checked' : ''}> Also save it as this lead's job value</label>`}
         <label class="field"><span>Address</span><input id="bkAddr" maxlength="200" autocomplete="street-address" value="${esc(dr.address)}" placeholder="Job address (optional)"></label>
         <label class="field"><span>Notes</span><textarea id="bkNotes" maxlength="1000" placeholder="Gate code, what to bring, who to ask for…">${esc(dr.notes)}</textarea></label>
-        <label class="field"><span>Move lead to</span><select id="bkStage">
+        ${dr.manual ? '' : `<label class="field"><span>Move lead to</span><select id="bkStage">
           <option value="">${cur ? `Keep in ${esc(cur.name)}` : 'Keep the current stage'}</option>
           ${stages.filter((s) => !o || s.id !== o.stageId).map((s) => `<option value="${esc(s.id)}"${s.id === dr.stageId ? ' selected' : ''}>${esc(s.name)}</option>`).join('')}
-        </select><span class="hint">Optional: update their stage in the same step.</span></label>
+        </select><span class="hint">Optional: update their stage in the same step.</span></label>`}
         <p class="err" id="bkErr" hidden></p>
-        <button class="btn" type="submit" id="bkSave">${dr.id ? 'Save changes' : 'Book appointment'}</button>
+        <button class="btn" type="submit" id="bkSave">${dr.id ? 'Save changes' : dr.closing ? 'Schedule job' : 'Book appointment'}</button>
+        ${dr.closing ? '<button class="btn ghost" type="button" id="bkLater">Not now</button>' : ''}
       </form>`;
   }
 
@@ -1103,6 +1125,9 @@
       case 'bkAddr': dr.address = v; break;
       case 'bkNotes': dr.notes = v; break;
       case 'bkAmount': dr.amount = v; break;
+      case 'bkName': dr.lead.name = v; break;
+      case 'bkPhone': dr.lead.phone = v; break;
+      case 'bkEmail': dr.lead.email = v; break;
       default: break;
     }
   });
@@ -1122,7 +1147,8 @@
     const err = $('#bkErr');
     const fail = (m) => { err.textContent = m; err.hidden = false; };
     err.hidden = true;
-    if (!dr.oppId) return fail('Choose which lead this is for.');
+    if (dr.manual && !dr.lead.name.trim()) return fail("Add the customer's name.");
+    if (!dr.manual && !dr.oppId) return fail('Choose which lead this is for, or book someone who isn\'t in your leads.');
     if (!dr.date || !dr.time) return fail('Pick a date and a start time.');
     const start = new Date(`${dr.date}T${dr.time}`);
     if (Number.isNaN(start.getTime())) return fail('That date or time does not look right.');
@@ -1134,7 +1160,10 @@
     try {
       const pid = state.board.pipeline.id;
       const r = await api('bookings', {
-        action: 'save', id: dr.id || undefined, month: dr.month || undefined, oppId: dr.oppId, start: start.toISOString(),
+        action: 'save', id: dr.id || undefined, month: dr.month || undefined, start: start.toISOString(),
+        oppId: dr.manual ? undefined : dr.oppId,
+        lead: dr.manual ? { name: dr.lead.name.trim(), phone: dr.lead.phone.trim(), email: dr.lead.email.trim() } : undefined,
+        pipeline: pid,
         minutes: dr.minutes, title: dr.title.trim() || 'Appointment', address: dr.address.trim(), notes: dr.notes.trim(),
         stageId: dr.stageId || undefined, tz: tz(), amount, setValue: !!dr.setValue && amount > 0,
       });
@@ -1158,7 +1187,10 @@
       fail(ex.message);
     } finally {
       booker.busy = false;
-      if (booker.mode === 'form' && $('#bkSave')) { $('#bkSave').disabled = false; $('#bkSave').textContent = dr.id ? 'Save changes' : 'Book appointment'; }
+      if (booker.mode === 'form' && $('#bkSave')) {
+        $('#bkSave').disabled = false;
+        $('#bkSave').textContent = dr.id ? 'Save changes' : dr.closing ? 'Schedule job' : 'Book appointment';
+      }
     }
   });
 
@@ -1192,7 +1224,8 @@
         <a class="btn sm ghost" href="${esc(googleLink(b))}" target="_blank" rel="noopener">${icon('cal')}Google</a></div>`;
     $('#bookerBody').innerHTML = `
       <h2 id="bookerTitle">${esc(b.title)}</h2>
-      <p class="sub">${esc(b.lead.name)}${o ? ` · ${esc((state.board.pipeline.stages.find((x) => x.id === o.stageId) || {}).name || '')}` : ''}</p>
+      <p class="sub">${esc(b.lead.name)}${o ? ` · ${esc((state.board.pipeline.stages.find((x) => x.id === o.stageId) || {}).name || '')}`
+        : b.manual ? " · not in your leads" : ''}</p>
       <div class="bk-when">${icon('cal')}<div><b>${esc(fmtDayLong(s))}</b><span>${esc(fmtTime(s))} – ${esc(fmtTime(e))} · ${esc(fmtLen(b.minutes))}${b.amount > 0 ? ` · ${esc(money(b.amount))}` : ''}</span></div></div>
       ${b.address ? `<a class="bk-addr" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.address)}" target="_blank" rel="noopener">${icon('pin')}${esc(b.address)}</a>` : ''}
       ${b.notes ? `<p class="bk-notes">${esc(b.notes)}</p>` : ''}
@@ -1217,6 +1250,16 @@
       document.querySelectorAll('.qchip').forEach((x) => x.classList.toggle('on', x === q));
       return;
     }
+    if (e.target.closest('#bkLater')) { closeBooker(); return; }
+    if (e.target.closest('#bkManual') || e.target.closest('#bkPickLead')) {
+      const dr = booker.draft;
+      dr.manual = !!e.target.closest('#bkManual');
+      dr.oppId = '';
+      dr.stageId = '';
+      renderBookingForm();
+      if (dr.manual) $('#bkName').focus();
+      return;
+    }
     const act = e.target.closest('[data-bk-act]');
     if (!act || booker.mode !== 'view') return;
     const b = state.bk.map.get(booker.id);
@@ -1231,7 +1274,9 @@
       if (!window.confirm(`Cancel ${b.title} with ${b.lead.name} on ${fmtDay(new Date(b.start))}?`)) return;
       act.disabled = true;
       try {
-        await api('bookings', { action: 'cancel', id: b.id, month: b.month, oppId: b.oppId, tz: tz() });
+        await api('bookings', {
+          action: 'cancel', id: b.id, month: b.month, oppId: b.oppId || undefined, pipeline: state.board.pipeline.id, tz: tz(),
+        });
         state.bk.map.delete(b.id);
         rememberBooking(state.board.pipeline.id, b.id, null);
         toast('Appointment cancelled');

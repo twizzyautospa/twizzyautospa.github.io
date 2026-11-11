@@ -597,8 +597,12 @@ async function ghlNote(contactId, text) {
 }
 
 async function saveBooking(store, user, body) {
-  const o = await loadOpportunity(user, body.oppId);
-  const pid = o.pipelineId;
+  // A booking is either for a GHL lead (oppId) or for someone typed in by hand (manual).
+  const manual = !body.oppId;
+  const o = manual ? null : await loadOpportunity(user, body.oppId);
+  const pid = manual ? (await bookingPipeline(user, body.pipeline)).id : o.pipelineId;
+  const typed = body.lead || {};
+  if (manual && !String(typed.name || '').trim()) throw new HttpError(400, "Add the customer's name.");
   const start = new Date(body.start);
   if (Number.isNaN(start.getTime())) throw new HttpError(400, 'Pick a date and time.');
   if (Math.abs(start.getTime() - Date.now()) > 2 * 365 * 864e5) throw new HttpError(400, 'Pick a date within the next two years.');
@@ -607,7 +611,7 @@ async function saveBooking(store, user, body) {
   const isNew = !body.id;
   if (!isNew && (!BK_ID_RE.test(String(body.id)) || !MONTH_RE.test(String(body.month || '')))) throw new HttpError(400, 'Unknown appointment.');
   const amount = Math.round(Math.min(1e7, Math.max(0, Number(body.amount) || 0)) * 100) / 100;
-  const moveStage = !!body.stageId && body.stageId !== o.pipelineStageId;
+  const moveStage = !manual && !!body.stageId && body.stageId !== o.pipelineStageId;
   if (moveStage) {
     const p = (await pipelines()).find((x) => x.id === pid);
     if (!p || !p.stages.some((st) => st.id === body.stageId)) throw new HttpError(400, 'Unknown stage.');
@@ -621,14 +625,21 @@ async function saveBooking(store, user, body) {
     const r = recentBookings.get(pid);
     prev = (r && r.get(id) && r.get(id).rec) || await store.get(`bk/${pid}/${body.month}/${id}`, { type: 'json' }).catch(() => null);
   }
-  const c = o.contact || {};
+  const c = (o && o.contact) || {};
   const rec = {
     id,
     pipelineId: pid,
     month,
-    oppId: o.id,
-    contactId: o.contactId || c.id || null,
-    lead: { name: slim(o).name, phone: c.phone || '', email: c.email || '' },
+    oppId: o ? o.id : null,
+    contactId: o ? (o.contactId || c.id || null) : null,
+    manual: manual || undefined,
+    lead: manual
+      ? {
+        name: String(typed.name).trim().slice(0, 80),
+        phone: String(typed.phone || '').trim().slice(0, 30),
+        email: String(typed.email || '').trim().slice(0, 120),
+      }
+      : { name: slim(o).name, phone: c.phone || '', email: c.email || '' },
     title: String(body.title || '').trim().slice(0, 60) || 'Appointment',
     start: start.toISOString(),
     end: new Date(start.getTime() + minutes * 60e3).toISOString(),
@@ -649,7 +660,7 @@ async function saveBooking(store, user, body) {
   let stageFailed = false;
   const patch = {};
   if (moveStage) Object.assign(patch, { pipelineId: pid, pipelineStageId: body.stageId });
-  if (body.setValue && amount > 0) patch.monetaryValue = amount;
+  if (!manual && body.setValue && amount > 0) patch.monetaryValue = amount;
   if (Object.keys(patch).length) {
     try {
       const r = await ghl('PUT', `/opportunities/${enc(o.id)}`, patch);
@@ -671,15 +682,15 @@ async function saveBooking(store, user, body) {
 }
 
 async function cancelBooking(store, user, body) {
-  const o = await loadOpportunity(user, body.oppId);
-  const pid = o.pipelineId;
+  const o = body.oppId ? await loadOpportunity(user, body.oppId) : null;
+  const pid = o ? o.pipelineId : (await bookingPipeline(user, body.pipeline)).id;
   if (!BK_ID_RE.test(String(body.id)) || !MONTH_RE.test(String(body.month || ''))) throw new HttpError(400, 'Unknown appointment.');
   const key = `bk/${pid}/${body.month}/${body.id}`;
   const r = recentBookings.get(pid);
   const rec = (r && r.get(body.id) && r.get(body.id).rec) || await store.get(key, { type: 'json' }).catch(() => null);
   await store.delete(key);
   noteRecentBooking(pid, body.id, null);
-  const synced = await ghlNote(o.contactId, `[Portal · ${user.n}] Appointment cancelled${rec ? `: ${rec.title} on ${whenText(rec, body.tz)}` : ''}`);
+  const synced = await ghlNote(o && o.contactId, `[Portal · ${user.n}] Appointment cancelled${rec ? `: ${rec.title} on ${whenText(rec, body.tz)}` : ''}`);
   return { cancelled: body.id, synced };
 }
 

@@ -526,4 +526,11 @@ html.client-theme .toast svg{color:#fff}
 .wk-ev.past{opacity:.55}
 .wk-ev:hover{filter:brightness(1.08)}
 
+/* booking someone who isn't a lead */
+.manual-btn{width:100%;margin-top:-6px}
+.manual-btn svg{width:14px;height:14px}
+.manual-row{margin-top:8px}
+.link-btn{display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:6px 0 0;color:var(--accent-text);font-weight:600;font-size:14px;cursor:pointer;align-self:flex-start}
+.link-btn svg{width:15px;height:15px}
+
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

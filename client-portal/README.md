@@ -38,7 +38,12 @@ Every login has a **Leads | Calendar** switch. The calendar is the portal's own 
 - **Book from a lead**: open a lead → *Book appointment* (right under the stage buttons). Pick what
   (Estimate, Job, Follow-up, Site visit or anything typed), date, start time, length, address and notes,
   and optionally move the lead to a new stage in the same step.
-- **Book from the calendar**: *+ Book* (or *Book this day*) and choose the lead.
+- **Moving a lead to Closed** (tap or drag; any stage named Closed / Won / Booked, never Lost) moves it right away,
+  then opens *Schedule the job* with Job, 2 hours and the lead's job value as the price. *Not now* skips it;
+  leads that already have an upcoming appointment are not asked again.
+- **Book from the calendar**: *+ Book* (or *Book this day*) and choose the lead, or tap
+  *Book someone who isn't in your leads* to type a name, phone and email by hand. Those appointments live only in
+  the portal calendar (no GHL contact, note or tag), count toward revenue, and count as not from Meta.
 - **Calendar view**: *Month* (grid with dots on booked days, the selected day's appointments, what's coming up)
   or *Week* (a day-by-day list on phones; an hourly grid on desktop where clicking an empty slot books that time).
 - **Revenue**: appointments can have a price. The calendar shows revenue for the week and the month being viewed
