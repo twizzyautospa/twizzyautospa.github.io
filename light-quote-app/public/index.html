@@ -37,8 +37,8 @@
         <span>Lumi<b>quote</b></span>
       </a>
       <nav class="top-nav" aria-label="Sections">
-        <a href="#how">How it works</a>
-        <a href="#try">Try it</a>
+        <a href="#demo">Live demo</a>
+        <a href="#time">Why it saves time</a>
         <a href="#own">Own it for life</a>
         <a href="#brand">Your brand</a>
         <a href="#faq">FAQ</a>
@@ -63,7 +63,7 @@
           <p class="lead">Lumiquote turns a homeowner's photo into a lit-up preview with a price, then lets you measure, quote and book from your phone. Buy it once. Own it for life.</p>
           <div class="cta-row" id="hero-cta">
             <a class="btn btn-accent btn-lg" href="tel:+16478830113">Call (647) 883-0113</a>
-            <a class="btn btn-plain btn-lg" href="#how">See how it works <span aria-hidden="true">→</span></a>
+            <a class="btn btn-plain btn-lg" href="#demo">Try the live demo <span aria-hidden="true">→</span></a>
           </div>
           <p class="mono-line">No monthly fees <span>·</span> Your logo on every page <span>·</span> Works on any phone</p>
         </div>
@@ -97,64 +97,28 @@
       </div>
     </section>
 
-    <!-- how it works -->
-    <section class="band" id="how">
+    <!-- live demo: both sides in four steps -->
+    <section class="band tint" id="demo">
       <div class="wrap">
-        <p class="eyebrow">How it works</p>
-        <h2>From "how much?" to booked, without the site visit.</h2>
-        <ol class="steps">
-          <li>
-            <span class="step-n">Step 01</span>
-            <h3>They tap your link</h3>
-            <p>From your ads, your website or a text. A short quiz asks what they want lit: roofline, trees and shrubs, or the full house.</p>
-          </li>
-          <li>
-            <span class="step-n">Step 02</span>
-            <h3>They see their own home lit up</h3>
-            <p>They add a photo and get a preview of their house in warm white, bright white and multicolour, with a price range beside it.</p>
-          </li>
-          <li>
-            <span class="step-n">Step 03</span>
-            <h3>You measure from above</h3>
-            <p>The request lands on your phone. Trace the roofline on a satellite view and the quote fills itself in at your own rates.</p>
-          </li>
-          <li>
-            <span class="step-n">Step 04</span>
-            <h3>You text the quote, they book</h3>
-            <p>One tap sends it. They accept on their phone and pick an install date. You show up to hang lights, not to give a price.</p>
-          </li>
-        </ol>
-      </div>
-    </section>
+        <p class="eyebrow">Live demo</p>
+        <h2>Try both sides in under a minute.</h2>
+        <p class="sub">You play the homeowner, then the installer. A sample home is already loaded, so there is nothing to upload.</p>
 
-    <!-- interactive demo -->
-    <section class="band tint" id="try">
-      <div class="wrap">
-        <p class="eyebrow">Try it</p>
-        <h2>This is what your customer sees.</h2>
-        <p class="sub">Change the options the way a homeowner would. Then put your own name on it.</p>
-
-        <div class="demo">
-          <div class="demo-controls">
-            <fieldset>
-              <legend>What do they want lit?</legend>
-              <div class="seg" data-group="service">
-                <button type="button" data-value="roofline" aria-pressed="true">Roofline</button>
-                <button type="button" data-value="trees" aria-pressed="false">Trees &amp; shrubs</button>
-                <button type="button" data-value="full" aria-pressed="false">Full house</button>
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend>How big is the home?</legend>
-              <div class="seg" data-group="size">
-                <button type="button" data-value="small" aria-pressed="false">Small</button>
-                <button type="button" data-value="medium" aria-pressed="true">Medium</button>
-                <button type="button" data-value="large" aria-pressed="false">Large</button>
-                <button type="button" data-value="xl" aria-pressed="false">Extra large</button>
-              </div>
-            </fieldset>
+        <div class="tour" id="tour" data-step="1">
+          <div class="tour-side">
+            <ol class="tour-steps">
+              <li><button type="button" data-go="1" aria-current="step"><span class="tour-n">1</span><span><strong>They ask</strong><small>A homeowner taps your link, picks what they want lit and adds a photo. No app. About two minutes.</small></span></button></li>
+              <li><button type="button" data-go="2"><span class="tour-n">2</span><span><strong>They see it</strong><small>They get their own home lit up in three colours with a price range. The request lands on your dashboard.</small></span></button></li>
+              <li><button type="button" data-go="3"><span class="tour-n">3</span><span><strong>You quote</strong><small>Trace the roofline from above and the quote fills itself in at your rates. One tap texts it.</small></span></button></li>
+              <li><button type="button" data-go="4"><span class="tour-n">4</span><span><strong>They book</strong><small>They accept on their phone and pick an install date. It shows as booked on your side.</small></span></button></li>
+            </ol>
+            <p class="tour-now" id="tour-now"></p>
+            <div class="tour-nav">
+              <button type="button" class="btn btn-accent btn-lg" id="tour-next">Next: see it lit up</button>
+              <button type="button" class="btn btn-plain" id="tour-play">Play it for me</button>
+            </div>
             <fieldset class="make-yours">
-              <legend>Now make it yours</legend>
+              <legend>Make it yours</legend>
               <label class="field">
                 <span>Your company name</span>
                 <input type="text" id="demo-name" maxlength="28" placeholder="Your company" autocomplete="organization">
@@ -171,30 +135,141 @@
                 </div>
               </div>
             </fieldset>
-            <p class="fineprint">Sample home. Every lit version here was made by Lumiquote's own preview engine from one daytime photo. Example prices shown; you set your own rates.</p>
+            <p class="fineprint">Sample home and sample customer. The lit-up pictures are real output from Lumiquote's preview engine. Example prices; you set your own rates.</p>
           </div>
 
-          <div class="phone" id="phone" aria-live="polite">
-            <div class="phone-bar">
-              <strong id="demo-company">Your Company</strong>
-              <span class="phone-tel" id="demo-tel">Call us</span>
-            </div>
-            <div class="phone-scene">
-              <img id="demo-photo" src="/img/house/roofline-warm.jpg" width="1100" height="821" loading="lazy" decoding="async" alt="The same home at dusk with warm white lights along the roofline">
-              <span class="phone-tag" id="demo-tag">Preview of their home</span>
-            </div>
-            <div class="phone-tabs seg" data-group="color">
-              <button type="button" data-value="warm" aria-pressed="true">Warm white</button>
-              <button type="button" data-value="cool" aria-pressed="false">Bright white</button>
-              <button type="button" data-value="multi" aria-pressed="false">Multicolour</button>
-              <button type="button" data-value="before" aria-pressed="false">Before</button>
-            </div>
-            <div class="phone-price">
-              <span>Estimated price</span>
-              <strong id="demo-price">$550 – $750</strong>
-              <small id="demo-what">Roofline · Medium home</small>
-            </div>
-            <span class="phone-cta" id="demo-cta">Accept and book</span>
+          <div class="tour-stage" aria-live="polite">
+            <figure class="device device-phone">
+              <figcaption><span class="who">Their phone</span><span class="turn">Homeowner's turn</span></figcaption>
+              <div class="phone" id="phone">
+                <div class="phone-bar">
+                  <strong id="demo-company" class="co-name">Your Company</strong>
+                  <span class="phone-tel" id="demo-tel">Call us</span>
+                </div>
+
+                <div class="pane" data-pane="1">
+                  <p class="pane-title">What would you like lit up?</p>
+                  <div class="opts" data-group="service">
+                    <button type="button" data-value="roofline" aria-pressed="false">Roofline</button>
+                    <button type="button" data-value="trees" aria-pressed="false">Trees &amp; shrubs</button>
+                    <button type="button" data-value="full" aria-pressed="true">Full house</button>
+                  </div>
+                  <div class="photo-row">
+                    <img src="/img/house/before.jpg" width="1100" height="821" loading="lazy" alt="Sample daytime photo of a two-storey home">
+                    <span><strong>Photo added</strong><small>Sample home, already loaded for you</small></span>
+                  </div>
+                  <button type="button" class="phone-cta" data-go="2">See my home lit up</button>
+                </div>
+
+                <div class="pane" data-pane="2" hidden>
+                  <div class="phone-scene">
+                    <img id="demo-photo" src="/img/house/full-warm.jpg" width="1100" height="821" loading="lazy" decoding="async" alt="The same home at dusk with warm white lights on the roofline, tree and shrubs">
+                    <span class="phone-tag" id="demo-tag">Preview of their home</span>
+                  </div>
+                  <div class="phone-tabs opts" data-group="color">
+                    <button type="button" data-value="warm" aria-pressed="true">Warm white</button>
+                    <button type="button" data-value="cool" aria-pressed="false">Bright white</button>
+                    <button type="button" data-value="multi" aria-pressed="false">Multicolour</button>
+                    <button type="button" data-value="before" aria-pressed="false">Before</button>
+                  </div>
+                  <div class="phone-price">
+                    <span>Estimated price</span>
+                    <strong id="demo-price">$875 – $1,175</strong>
+                    <small><b class="co-name">Your Company</b> will confirm your exact price.</small>
+                  </div>
+                </div>
+
+                <div class="pane" data-pane="3" hidden>
+                  <div class="phone-scene small"><img class="demo-thumb" src="/img/house/full-warm.jpg" width="1100" height="821" loading="lazy" alt=""></div>
+                  <div class="waiting">
+                    <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                    <strong>Request sent</strong>
+                    <small><b class="co-name">Your Company</b> is measuring your roofline and will text your exact price.</small>
+                  </div>
+                </div>
+
+                <div class="pane" data-pane="4" hidden>
+                  <div id="quote-open">
+                    <div class="phone-price">
+                      <span>Your quote from <b class="co-name">Your Company</b></span>
+                      <strong class="quote-total">$1,068</strong>
+                      <ul class="lines quote-lines"></ul>
+                    </div>
+                    <p class="pane-title small">Choose your install date</p>
+                    <div class="opts dates" data-group="date"></div>
+                    <button type="button" class="phone-cta" id="accept">Accept and book</button>
+                  </div>
+                  <div id="quote-booked" class="booked" hidden>
+                    <span class="tick" aria-hidden="true"><svg><use href="#i-check"/></svg></span>
+                    <strong>You're booked</strong>
+                    <small>Install date: <b class="booked-date"></b></small>
+                    <small><b class="co-name">Your Company</b> will be in touch to confirm.</small>
+                  </div>
+                </div>
+              </div>
+            </figure>
+
+            <figure class="device device-dash">
+              <figcaption><span class="who">Your dashboard</span><span class="turn">Your turn</span></figcaption>
+              <div class="dash">
+                <div class="dash-bar"><strong class="co-name">Your Company</strong><span>Leads</span></div>
+
+                <div class="pane" data-pane="1">
+                  <div class="dash-empty">
+                    <strong>Waiting for requests</strong>
+                    <small>Your quote link is on your ads, website and texts. Requests show up here the moment they come in.</small>
+                  </div>
+                </div>
+
+                <div class="pane" data-pane="2" hidden>
+                  <div class="lead-card">
+                    <img class="demo-thumb" src="/img/house/full-warm.jpg" width="1100" height="821" loading="lazy" alt="">
+                    <div>
+                      <span class="badge badge-new">New request</span>
+                      <strong>Jordan Lee</strong>
+                      <small>12 Maple Street · just now</small>
+                      <small class="lead-wants">Full house · est. $875 – $1,175</small>
+                    </div>
+                  </div>
+                  <p class="dash-note">Photo, address and what they want, ready to quote.</p>
+                </div>
+
+                <div class="pane" data-pane="3" hidden>
+                  <div class="measure">
+                    <svg viewBox="0 0 300 170" role="img" aria-label="Top-down view of the home with the front roofline traced">
+                      <rect width="300" height="170" fill="#6f9a5b"/>
+                      <rect y="146" width="300" height="24" fill="#8b8f96"/>
+                      <rect y="136" width="300" height="10" fill="#c9cdd3"/>
+                      <path d="M196 110h64v26h-64z" fill="#b9bcc2"/>
+                      <circle cx="30" cy="60" r="20" fill="#4f7d42"/><circle cx="278" cy="34" r="17" fill="#4f7d42"/><circle cx="232" cy="124" r="9" fill="#55793f"/>
+                      <rect x="60" y="34" width="130" height="76" fill="#3d4453"/><path d="M60 72h130" stroke="#2c3240" stroke-width="2"/>
+                      <rect x="190" y="58" width="70" height="52" fill="#454d5e"/><path d="M190 84h70" stroke="#2c3240" stroke-width="2"/>
+                      <rect x="125" y="110" width="35" height="12" fill="#4a5263"/>
+                      <path class="trace" pathLength="100" d="M60 110H125V122H160V110H260" fill="none" stroke="#ffd23f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                      <g class="pins" fill="#fff" stroke="#e5484d" stroke-width="2"><circle cx="60" cy="110" r="3.5"/><circle cx="125" cy="110" r="3.5"/><circle cx="160" cy="110" r="3.5"/><circle cx="260" cy="110" r="3.5"/></g>
+                    </svg>
+                    <span class="measure-tag">From above (illustration)</span>
+                    <span class="measure-feet"><b id="feet">0</b> ft traced</span>
+                  </div>
+                  <ul class="lines dash-lines quote-lines"></ul>
+                  <div class="dash-total"><span>Quote total</span><strong class="quote-total">$1,068</strong></div>
+                  <button type="button" class="btn btn-accent btn-block" data-go="4">Text quote to Jordan</button>
+                </div>
+
+                <div class="pane" data-pane="4" hidden>
+                  <div class="lead-card">
+                    <img class="demo-thumb" src="/img/house/full-warm.jpg" width="1100" height="821" loading="lazy" alt="">
+                    <div>
+                      <span class="badge badge-sent" id="lead-status">Quote sent</span>
+                      <strong>Jordan Lee</strong>
+                      <small>12 Maple Street</small>
+                      <small><span class="quote-total">$1,068</span> · <span id="lead-date">waiting for them to accept</span></small>
+                    </div>
+                  </div>
+                  <p class="dash-note" id="dash-note">Texted from your phone. Now it is their move: tap Accept and book on their phone.</p>
+                </div>
+              </div>
+            </figure>
           </div>
         </div>
       </div>
