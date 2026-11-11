@@ -32,6 +32,11 @@
   status = 200
 
 [[redirects]]
+  from = "/brand"
+  to = "/brand.html"
+  status = 200
+
+[[redirects]]
   from = "/login"
   to = "/login.html"
   status = 200
@@ -41,3 +46,8 @@
   [headers.values]
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/img/brand/lumiquote-logos.zip"
+  [headers.values]
+    Content-Disposition = "attachment; filename=lumiquote-logos.zip"
