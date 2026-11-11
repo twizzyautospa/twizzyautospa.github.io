@@ -56,6 +56,13 @@
   const money = (n) => `$${Number(n || 0).toLocaleString(undefined, {
     minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2,
   })}`;
+  // Compact dollars for small tiles: $950, $7.1k, $12k, $1.2M.
+  const shortMoney = (n) => {
+    const v = Number(n) || 0;
+    if (v < 1000) return money(v);
+    if (v < 1e6) return `$${v < 1e4 ? (v / 1e3).toFixed(1).replace(/\.0$/, '') : Math.round(v / 1e3)}k`;
+    return `$${(v / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
+  };
   const isNew = (o) => o.createdAt && Date.now() - new Date(o.createdAt).getTime() < 48 * 3600e3;
 
   let toastTimer;
@@ -319,6 +326,7 @@
       : (o.status === 'lost' || o.status === 'abandoned') ? '<span class="badge lost">Lost</span>'
         : isNew(o) ? '<span class="badge">New</span>' : '';
     const bits = [
+      o.meta === 'no' ? '<span class="src no">Not Meta</span>' : isMeta(o) ? '<span class="src">Meta</span>' : '',
       stageName && `<span>${esc(stageName)}</span>`,
       o.contact.phone && `<span>${esc(phonePretty(o.contact.phone))}</span>`,
       `<span>${esc(ago(o.createdAt))}</span>`,
@@ -341,10 +349,12 @@
     const weekAgo = Date.now() - 7 * 864e5;
     const newCount = opps.filter((o) => o.createdAt && new Date(o.createdAt).getTime() > weekAgo).length;
     const total = opps.reduce((s, o) => s + (o.value || 0), 0);
+    const metaCount = opps.filter((o) => isMeta(o)).length;
     $('#summary').innerHTML = `
-      <div class="stat"><div class="n">${opps.length}</div><div class="l">Total leads</div></div>
-      <div class="stat hi"><div class="n">${newCount}</div><div class="l">This week</div></div>
-      <div class="stat"><div class="n">${esc(money(total))}</div><div class="l">Job value</div></div>`;
+      <div class="stat"><div class="n">${opps.length}</div><div class="l">Leads</div></div>
+      <div class="stat hi"><div class="n">${metaCount}</div><div class="l">From Meta</div></div>
+      <div class="stat"><div class="n">${newCount}</div><div class="l">This week</div></div>
+      <div class="stat" title="${esc(money(total))}"><div class="n">${esc(shortMoney(total))}</div><div class="l">Job value</div></div>`;
 
     const count = (id) => shown.filter((o) => o.stageId === id).length;
     $('#chips').innerHTML = stages.map((s) => `
@@ -370,7 +380,7 @@
     if (state.openId) renderSheet();
   }
 
-  DESKTOP.addEventListener('change', render);
+  DESKTOP.addEventListener('change', () => { render(); if (state.view === 'calendar') renderCalendar(); });
 
   $('#chips').addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');
@@ -521,6 +531,7 @@
       $('#sheetStages').innerHTML = stageButtons;
       $('#sheetSub').textContent = subLine(o, stage);
       renderSheetBookings(o);
+      renderMetaPick(o);
       return;
     }
 
@@ -533,6 +544,8 @@
         <a class="act${c.email ? '' : ' off'}" href="${c.email ? `mailto:${esc(c.email)}` : '#'}">${icon('mail')}Email</a>
       </div>
       ${(c.phone || c.email) ? `<p class="contact-line">${esc([phonePretty(c.phone), c.email].filter(Boolean).join(' · '))}</p>` : ''}
+
+      <div class="sec"><h3>Did this lead come from Meta?</h3><div id="metaPick"></div></div>
 
       <div class="sec"><h3>Move to stage</h3><div class="stages" id="sheetStages">${stageButtons}</div>
         <div class="sheet-bk" id="sheetBk"></div></div>
@@ -562,6 +575,46 @@
       </div>`;
     renderNotes(o.id);
     renderSheetBookings(o);
+    renderMetaPick(o);
+  }
+
+  const isMeta = (o) => !!o && (o.meta === 'yes' || o.meta === 'auto');
+
+  function renderMetaPick(o) {
+    const box = $('#metaPick');
+    if (!box || !o) return;
+    const yes = isMeta(o);
+    const no = o.meta === 'no';
+    const hint = {
+      auto: 'Marked automatically from the Facebook / Instagram ad form. Tap to change.',
+      yes: 'Marked as a Meta lead.',
+      no: 'Marked as not from Meta.',
+      unknown: 'Not marked yet.',
+    }[o.meta || 'unknown'];
+    box.innerHTML = `<div class="meta-pick">
+        <button type="button" data-meta="yes" class="${yes ? 'on' : ''}"${o._metaSaving ? ' disabled' : ''}>${icon('check')}From Meta</button>
+        <button type="button" data-meta="no" class="${no ? 'on no' : ''}"${o._metaSaving ? ' disabled' : ''}>${icon('x')}Not from Meta</button>
+      </div><p class="hint">${esc(hint)}</p>`;
+  }
+
+  async function setMeta(id, meta) {
+    const o = findOpp(id);
+    if (!o || o._metaSaving || o.meta === meta) return;
+    const prev = o.meta;
+    o.meta = meta;
+    o._metaSaving = true;
+    render();
+    try {
+      await api('meta', { id, meta });
+      toast(meta === 'yes' ? 'Marked as a Meta lead' : 'Marked as not from Meta');
+    } catch (ex) {
+      o.meta = prev;
+      toast(ex.message, true);
+    } finally {
+      delete o._metaSaving;
+      render();
+      if (state.openId === id) renderMetaPick(o);
+    }
   }
 
   function renderSheetBookings(o) {
@@ -580,6 +633,8 @@
     if (e.target.closest('[data-stop]')) return;
     const b = e.target.closest('[data-move]');
     if (b && state.openId) { moveTo(state.openId, b.dataset.move); return; }
+    const mt = e.target.closest('[data-meta]');
+    if (mt && state.openId) { setMeta(state.openId, mt.dataset.meta); return; }
     const book = e.target.closest('[data-book]');
     if (book) { openBookingForm({ oppId: book.dataset.book, lockLead: true }); return; }
     const card = e.target.closest('[data-bk]');
@@ -701,7 +756,7 @@
   function bkCard(b, withDate) {
     const s = new Date(b.start);
     const past = new Date(b.end) < new Date();
-    const where = b.address || phonePretty(b.lead.phone);
+    const where = [b.amount > 0 && money(b.amount), b.address || phonePretty(b.lead.phone)].filter(Boolean).join(' · ');
     return `<div class="bk-card${past ? ' past' : ''}" role="button" tabindex="0" data-bk="${esc(b.id)}">
       <div class="bk-time"><b>${esc(fmtTime(s))}</b><span>${esc(withDate ? fmtDay(s) : fmtLen(b.minutes))}</span></div>
       <div class="bk-main"><div class="bk-title">${esc(b.title)} · ${esc(b.lead.name)}</div>
@@ -710,18 +765,48 @@
     </div>`;
   }
 
-  function renderCalendar() {
-    const now = new Date();
-    if (!state.cal.month) state.cal.month = new Date(now.getFullYear(), now.getMonth(), 1);
-    if (!state.cal.day) state.cal.day = dayKey(now);
-    const m = state.cal.month;
-    const today = dayKey(now);
+  const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  const startOfWeek = (d) => addDays(d, -d.getDay());
+  const fmtMD = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+  function weekTitle(ws) {
+    const we = addDays(ws, 6);
+    const end = we.getMonth() === ws.getMonth() ? we.getDate() : fmtMD(we);
+    return `${fmtMD(ws)} – ${end}`;
+  }
+
+  function bookingsByDay() {
     const byDay = new Map();
     for (const b of allBookings()) {
       const k = dayKey(new Date(b.start));
       if (!byDay.has(k)) byDay.set(k, []);
       byDay.get(k).push(b);
     }
+    return byDay;
+  }
+
+  // Revenue = prices on appointments that start in the period; "from Meta" = leads marked/auto Meta.
+  function revenue(from, to) {
+    let total = 0; let meta = 0; let jobs = 0;
+    for (const b of allBookings()) {
+      const s = new Date(b.start);
+      if (s < from || s >= to || !(b.amount > 0)) continue;
+      total += b.amount;
+      jobs++;
+      if (isMeta(findOpp(b.oppId))) meta += b.amount;
+    }
+    return { total, meta, jobs };
+  }
+
+  function revTile(label, r) {
+    const sub = r.jobs
+      ? `${r.jobs} priced ${r.jobs === 1 ? 'job' : 'jobs'}${r.meta ? ` · ${money(r.meta)} from Meta` : ''}`
+      : 'No priced jobs yet';
+    return `<div class="rev-tile"><span class="l">${esc(label)}</span><b>${esc(money(r.total))}</b><span class="s">${esc(sub)}</span></div>`;
+  }
+
+  function monthBody(m, byDay, today) {
+    const now = new Date();
     const lead = new Date(m.getFullYear(), m.getMonth(), 1).getDay();
     const days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
     const wd = Array.from({ length: 7 }, (_, i) => new Date(2026, 10, 1 + i).toLocaleDateString(undefined, { weekday: 'narrow' }));
@@ -735,18 +820,10 @@
     }
     const sel = fromDayKey(state.cal.day);
     const dayList = byDay.get(state.cal.day) || [];
-    const after = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate() + 1);
+    const after = addDays(sel, 1);
     const upcoming = allBookings().filter((b) => new Date(b.start) >= after && new Date(b.start) >= now).slice(0, 8);
     const thisMonth = m.getFullYear() === now.getFullYear() && m.getMonth() === now.getMonth();
-    $('#calView').innerHTML = `
-      <div class="cal-top">
-        <div class="cal-nav">
-          <button class="icon-btn prev" type="button" data-cal="prev" aria-label="Previous month">${icon('next')}</button>
-          <h2>${esc(m.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))}</h2>
-          <button class="icon-btn" type="button" data-cal="next" aria-label="Next month">${icon('next')}</button>
-        </div>
-        <button class="btn sm" type="button" data-cal="book">${icon('plus')}Book</button>
-      </div>
+    return `
       <div class="cal-layout">
         <div class="cal-month">
           <div class="cal-wd">${wd.map((x) => `<span>${esc(x)}</span>`).join('')}</div>
@@ -764,6 +841,107 @@
       </div>`;
   }
 
+  // Phone: the week as a list of days.
+  function weekList(ws, byDay, today) {
+    return `<div class="wk-list">${Array.from({ length: 7 }, (_, i) => {
+      const d = addDays(ws, i);
+      const k = dayKey(d);
+      const list = byDay.get(k) || [];
+      const dayRev = list.reduce((t, b) => t + (b.amount || 0), 0);
+      return `<section class="wk-day${k === today ? ' today' : ''}${k < today ? ' past' : ''}">
+        <div class="wk-dh"><b>${esc(d.toLocaleDateString(undefined, { weekday: 'short' }))}</b><span>${esc(fmtMD(d))}</span>
+          ${dayRev ? `<em>${esc(money(dayRev))}</em>` : ''}
+          ${k >= today ? `<button class="icon-btn small" type="button" data-cal="bookon" data-on="${k}" aria-label="Book ${esc(fmtDayLong(d))}">${icon('plus')}</button>` : ''}</div>
+        ${list.length ? `<div class="bk-list">${list.map((b) => bkCard(b)).join('')}</div>` : '<p class="wk-none">Nothing booked</p>'}
+      </section>`;
+    }).join('')}</div>`;
+  }
+
+  // Desktop: the week as an hourly grid. Click an empty slot to book it.
+  const HOUR_PX = 48;
+  function weekGrid(ws, byDay, today) {
+    const days = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
+    let lo = 7; let hi = 19;
+    for (const d of days) {
+      for (const b of byDay.get(dayKey(d)) || []) {
+        const s = new Date(b.start); const e = new Date(b.end);
+        lo = Math.min(lo, s.getHours());
+        hi = Math.max(hi, dayKey(e) !== dayKey(s) ? 24 : e.getHours() + (e.getMinutes() ? 1 : 0));
+      }
+    }
+    const hours = Array.from({ length: hi - lo }, (_, i) => lo + i);
+    const hourLabel = (h) => new Date(2026, 0, 1, h).toLocaleTimeString(undefined, { hour: 'numeric' });
+    const cols = days.map((d) => {
+      const k = dayKey(d);
+      const list = (byDay.get(k) || []).slice().sort((a, b) => a.start.localeCompare(b.start));
+      const lanes = [];
+      const placed = list.map((b) => {
+        const st = +new Date(b.start); const en = +new Date(b.end);
+        let lane = lanes.findIndex((end) => end <= st);
+        if (lane < 0) { lane = lanes.length; lanes.push(en); } else lanes[lane] = en;
+        return { b, lane };
+      });
+      const n = Math.max(1, lanes.length);
+      const blocks = placed.map(({ b, lane }) => {
+        const s = new Date(b.start);
+        const top = (((s.getHours() - lo) * 60 + s.getMinutes()) / 60) * HOUR_PX;
+        const h = Math.max((b.minutes / 60) * HOUR_PX - 2, 22);
+        return `<div class="wk-ev${new Date(b.end) < new Date() ? ' past' : ''}" role="button" tabindex="0" data-bk="${esc(b.id)}"
+          style="top:${top}px;height:${h}px;left:calc(${(lane * 100) / n}% + 2px);width:calc(${100 / n}% - 4px)">
+          <b>${esc(fmtTime(s))}</b> ${esc(b.title)} · ${esc(b.lead.name)}${b.amount > 0 ? ` <i>${esc(money(b.amount))}</i>` : ''}</div>`;
+      }).join('');
+      const dayRev = list.reduce((t, b) => t + (b.amount || 0), 0);
+      return `<div class="wk-col${k === today ? ' today' : ''}${k < today ? ' past' : ''}">
+        <div class="wk-head"><span>${esc(d.toLocaleDateString(undefined, { weekday: 'short' }))}</span><b>${d.getDate()}</b>${dayRev ? `<em>${esc(money(dayRev))}</em>` : ''}</div>
+        <div class="wk-body" data-slot="${k}" style="height:${hours.length * HOUR_PX}px">${hours.map(() => '<div class="wk-hr"></div>').join('')}${blocks}</div>
+      </div>`;
+    }).join('');
+    return `<div class="wk-grid" data-lo="${lo}">
+      <div class="wk-times"><div class="wk-head"></div>${hours.map((h) => `<div class="wk-t">${esc(hourLabel(h))}</div>`).join('')}</div>${cols}</div>`;
+  }
+
+  function renderCalendar() {
+    const now = new Date();
+    if (!state.cal.month) state.cal.month = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (!state.cal.day) state.cal.day = dayKey(now);
+    if (!state.cal.mode) state.cal.mode = store.get('lt_calmode') === 'week' ? 'week' : 'month';
+    const week = state.cal.mode === 'week';
+    const today = dayKey(now);
+    const sel = fromDayKey(state.cal.day);
+    const ws = startOfWeek(sel);
+    if (week) state.cal.month = new Date(sel.getFullYear(), sel.getMonth(), 1);
+    const m = state.cal.month;
+    const byDay = bookingsByDay();
+    const thisWeek = dayKey(ws) === dayKey(startOfWeek(now));
+    const thisMonth = m.getFullYear() === now.getFullYear() && m.getMonth() === now.getMonth();
+    const title = week ? weekTitle(ws) : m.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    let body;
+    if (!week) body = monthBody(m, byDay, today);
+    else {
+      body = DESKTOP.matches ? weekGrid(ws, byDay, today) : weekList(ws, byDay, today);
+      if (!thisWeek) body = `<button class="cal-today" type="button" data-cal="today">Back to this week</button>${body}`;
+    }
+    $('#calView').innerHTML = `
+      <div class="cal-top">
+        <div class="cal-nav">
+          <button class="icon-btn prev" type="button" data-cal="prev" aria-label="Previous ${week ? 'week' : 'month'}">${icon('next')}</button>
+          <h2>${esc(title)}</h2>
+          <button class="icon-btn" type="button" data-cal="next" aria-label="Next ${week ? 'week' : 'month'}">${icon('next')}</button>
+        </div>
+        <div class="cal-tools">
+          <div class="seg cal-mode" role="group" aria-label="Calendar view">
+            <button type="button" data-mode="month" class="${week ? '' : 'on'}">Month</button><button type="button" data-mode="week" class="${week ? 'on' : ''}">Week</button>
+          </div>
+          <button class="btn sm" type="button" data-cal="book">${icon('plus')}Book</button>
+        </div>
+      </div>
+      <div class="rev">
+        ${revTile(thisWeek ? 'This week' : `Week of ${fmtMD(ws)}`, revenue(ws, addDays(ws, 7)))}
+        ${revTile(thisMonth ? 'This month' : m.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }), revenue(m, new Date(m.getFullYear(), m.getMonth() + 1, 1)))}
+      </div>
+      ${body}`;
+  }
+
   $('#tabs').addEventListener('click', (e) => {
     const bt = e.target.closest('button[data-view]');
     if (bt && bt.dataset.view !== state.view) showView(bt.dataset.view);
@@ -771,12 +949,28 @@
 
   $('#calView').addEventListener('click', (e) => {
     if (e.target.closest('[data-stop]')) return;
+    const mode = e.target.closest('[data-mode]');
+    if (mode) {
+      state.cal.mode = mode.dataset.mode;
+      store.set('lt_calmode', state.cal.mode);
+      renderCalendar();
+      loadBookings();
+      return;
+    }
     const act = e.target.closest('[data-cal]');
     if (act) {
-      const m = state.cal.month;
+      const week = state.cal.mode === 'week';
       const a = act.dataset.cal;
       if (a === 'prev' || a === 'next') {
-        state.cal.month = new Date(m.getFullYear(), m.getMonth() + (a === 'next' ? 1 : -1), 1);
+        const dir = a === 'next' ? 1 : -1;
+        if (week) {
+          const d = addDays(fromDayKey(state.cal.day), 7 * dir);
+          state.cal.day = dayKey(d);
+          state.cal.month = new Date(d.getFullYear(), d.getMonth(), 1);
+        } else {
+          const m = state.cal.month;
+          state.cal.month = new Date(m.getFullYear(), m.getMonth() + dir, 1);
+        }
         renderCalendar();
         loadBookings();
       } else if (a === 'today') {
@@ -784,17 +978,28 @@
         state.cal.month = new Date(n.getFullYear(), n.getMonth(), 1);
         state.cal.day = dayKey(n);
         renderCalendar();
+        loadBookings();
       } else if (a === 'book') {
         openBookingForm({ day: state.cal.day >= dayKey(new Date()) ? state.cal.day : null });
       } else if (a === 'bookday') {
         openBookingForm({ day: state.cal.day });
+      } else if (a === 'bookon') {
+        openBookingForm({ day: act.dataset.on });
       }
       return;
     }
     const day = e.target.closest('[data-day]');
     if (day) { state.cal.day = day.dataset.day; renderCalendar(); return; }
     const card = e.target.closest('[data-bk]');
-    if (card) openBookingView(card.dataset.bk);
+    if (card) { openBookingView(card.dataset.bk); return; }
+    const slot = e.target.closest('[data-slot]');
+    if (slot && slot.dataset.slot >= dayKey(new Date())) {
+      const lo = Number(slot.closest('.wk-grid').dataset.lo);
+      const y = e.clientY - slot.getBoundingClientRect().top;
+      const mins = Math.max(0, Math.round(((y / HOUR_PX) * 60) / 30) * 30);
+      const h = Math.min(23, lo + Math.floor(mins / 60));
+      openBookingForm({ day: slot.dataset.slot, time: `${pad2(h)}:${pad2(mins % 60)}` });
+    }
   });
   $('#calView').addEventListener('keydown', (e) => {
     const card = e.target.closest('[data-bk]');
@@ -824,7 +1029,7 @@
   $('#bookerClose').addEventListener('click', () => closeBooker());
   $('#bkScrim').addEventListener('click', () => closeBooker());
 
-  function openBookingForm({ oppId = '', lockLead = false, day = null, edit = null } = {}) {
+  function openBookingForm({ oppId = '', lockLead = false, day = null, time = null, edit = null } = {}) {
     if (!state.board) return;
     const tomorrow = dayKey(new Date(Date.now() + 864e5));
     let draft;
@@ -833,12 +1038,12 @@
       draft = {
         id: edit.id, month: edit.month, oppId: edit.oppId, lockLead: true, title: edit.title,
         date: dayKey(s), time: `${pad2(s.getHours())}:${pad2(s.getMinutes())}`, minutes: edit.minutes,
-        address: edit.address, notes: edit.notes, stageId: '',
+        address: edit.address, notes: edit.notes, stageId: '', amount: edit.amount || '', setValue: false,
       };
     } else {
       draft = {
-        id: null, month: null, oppId, lockLead, title: 'Estimate', date: day || tomorrow, time: '09:00',
-        minutes: 60, address: '', notes: '', stageId: '',
+        id: null, month: null, oppId, lockLead, title: 'Estimate', date: day || tomorrow, time: time || '09:00',
+        minutes: 60, address: '', notes: '', stageId: '', amount: '', setValue: true,
       };
     }
     booker.mode = 'form';
@@ -869,6 +1074,10 @@
           <label class="field"><span>Start time</span><input id="bkTime" type="time" step="900" value="${esc(dr.time)}" required></label>
         </div>
         <label class="field"><span>How long</span><select id="bkLen">${lenOpts.map(([v, l]) => `<option value="${v}"${v === dr.minutes ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+        <div class="field"><span>Price (optional)</span>
+          <div class="price"><input id="bkAmount" inputmode="decimal" placeholder="0" value="${esc(dr.amount)}" aria-label="Price in dollars"></div>
+          <span class="hint">Counts toward your weekly and monthly revenue.</span></div>
+        <label class="check"><input type="checkbox" id="bkSetValue"${dr.setValue ? ' checked' : ''}> Also save it as this lead's job value</label>
         <label class="field"><span>Address</span><input id="bkAddr" maxlength="200" autocomplete="street-address" value="${esc(dr.address)}" placeholder="Job address (optional)"></label>
         <label class="field"><span>Notes</span><textarea id="bkNotes" maxlength="1000" placeholder="Gate code, what to bring, who to ask for…">${esc(dr.notes)}</textarea></label>
         <label class="field"><span>Move lead to</span><select id="bkStage">
@@ -893,6 +1102,7 @@
       case 'bkTime': dr.time = v; break;
       case 'bkAddr': dr.address = v; break;
       case 'bkNotes': dr.notes = v; break;
+      case 'bkAmount': dr.amount = v; break;
       default: break;
     }
   });
@@ -902,6 +1112,7 @@
     if (e.target.id === 'bkLead') { dr.oppId = e.target.value; dr.stageId = ''; renderBookingForm(); }
     if (e.target.id === 'bkLen') dr.minutes = Number(e.target.value);
     if (e.target.id === 'bkStage') dr.stageId = e.target.value;
+    if (e.target.id === 'bkSetValue') dr.setValue = e.target.checked;
   });
 
   $('#bookerBody').addEventListener('submit', async (e) => {
@@ -915,6 +1126,7 @@
     if (!dr.date || !dr.time) return fail('Pick a date and a start time.');
     const start = new Date(`${dr.date}T${dr.time}`);
     if (Number.isNaN(start.getTime())) return fail('That date or time does not look right.');
+    const amount = Number(String(dr.amount || '').replace(/[^0-9.]/g, '')) || 0;
     const btn = $('#bkSave');
     booker.busy = true;
     btn.disabled = true;
@@ -924,15 +1136,19 @@
       const r = await api('bookings', {
         action: 'save', id: dr.id || undefined, month: dr.month || undefined, oppId: dr.oppId, start: start.toISOString(),
         minutes: dr.minutes, title: dr.title.trim() || 'Appointment', address: dr.address.trim(), notes: dr.notes.trim(),
-        stageId: dr.stageId || undefined, tz: tz(),
+        stageId: dr.stageId || undefined, tz: tz(), amount, setValue: !!dr.setValue && amount > 0,
       });
       state.bk.map.set(r.booking.id, r.booking);
       rememberBooking(pid, r.booking.id, r.booking);
       if (r.opportunity) {
         const o = findOpp(dr.oppId);
-        if (o) Object.assign(o, { stageId: r.opportunity.stageId, stageChangedAt: new Date().toISOString() });
+        if (o) {
+          if (o.stageId !== r.opportunity.stageId) o.stageChangedAt = new Date().toISOString();
+          Object.assign(o, { stageId: r.opportunity.stageId, value: r.opportunity.value });
+        }
       }
-      const stageName = r.opportunity && (state.board.pipeline.stages.find((s) => s.id === r.opportunity.stageId) || {}).name;
+      const moved = r.opportunity && dr.stageId && r.opportunity.stageId === dr.stageId;
+      const stageName = moved && (state.board.pipeline.stages.find((s) => s.id === r.opportunity.stageId) || {}).name;
       toast(`${dr.id ? 'Updated' : 'Booked'}: ${shortWhen(r.booking)}${stageName ? ` · moved to ${stageName}` : ''}`
         + (r.stageFailed ? ' (stage not updated, try again)' : ''), !!r.stageFailed);
       booker.fresh = !dr.id;
@@ -977,7 +1193,7 @@
     $('#bookerBody').innerHTML = `
       <h2 id="bookerTitle">${esc(b.title)}</h2>
       <p class="sub">${esc(b.lead.name)}${o ? ` · ${esc((state.board.pipeline.stages.find((x) => x.id === o.stageId) || {}).name || '')}` : ''}</p>
-      <div class="bk-when">${icon('cal')}<div><b>${esc(fmtDayLong(s))}</b><span>${esc(fmtTime(s))} – ${esc(fmtTime(e))} · ${esc(fmtLen(b.minutes))}</span></div></div>
+      <div class="bk-when">${icon('cal')}<div><b>${esc(fmtDayLong(s))}</b><span>${esc(fmtTime(s))} – ${esc(fmtTime(e))} · ${esc(fmtLen(b.minutes))}${b.amount > 0 ? ` · ${esc(money(b.amount))}` : ''}</span></div></div>
       ${b.address ? `<a class="bk-addr" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.address)}" target="_blank" rel="noopener">${icon('pin')}${esc(b.address)}</a>` : ''}
       ${b.notes ? `<p class="bk-notes">${esc(b.notes)}</p>` : ''}
       <div class="actions">

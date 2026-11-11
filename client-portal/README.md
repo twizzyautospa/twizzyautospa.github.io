@@ -22,6 +22,15 @@ phone / browser ──► public/ (static app) ──► /api/* ──► netlif
 - Clients can: move stage, set a job value, add notes (saved on the GHL contact, prefixed
   `[Portal · Client Name]`), and tap to call / text / email.
 
+## Meta lead marking
+
+Every lead has a **Did this lead come from Meta?** choice (From Meta / Not from Meta) in its panel, and lead
+cards show a META / NOT META tag. The summary row counts leads from Meta.
+
+- A client's choice is saved as a GHL contact tag: `meta lead` or `not meta lead` (the other one is removed).
+- Leads nobody has marked count as Meta automatically when GHL's attribution says the lead came from a paid
+  social ad (the Facebook / Instagram lead form), shown as "Marked automatically… Tap to change."
+
 ## Calendar (booked appointments)
 
 Every login has a **Leads | Calendar** switch. The calendar is the portal's own (not a GHL calendar):
@@ -30,7 +39,11 @@ Every login has a **Leads | Calendar** switch. The calendar is the portal's own 
   (Estimate, Job, Follow-up, Site visit or anything typed), date, start time, length, address and notes,
   and optionally move the lead to a new stage in the same step.
 - **Book from the calendar**: *+ Book* (or *Book this day*) and choose the lead.
-- **Calendar view**: month grid with dots on booked days, the selected day's appointments, and what's coming up.
+- **Calendar view**: *Month* (grid with dots on booked days, the selected day's appointments, what's coming up)
+  or *Week* (a day-by-day list on phones; an hourly grid on desktop where clicking an empty slot books that time).
+- **Revenue**: appointments can have a price. The calendar shows revenue for the week and the month being viewed
+  (sum of prices of appointments starting in that period) and how much of it came from Meta leads. A price can
+  also be saved as the lead's job value in GHL (checked by default).
   Lead cards show their next appointment; the Calendar tab shows how many are in the next 7 days.
 - **Add to phone calendar**: every appointment has *Apple / Outlook* (an `.ics` file from `/api/ics`, with a
   1-hour reminder) and *Google* buttons. Change or cancel from the same screen.

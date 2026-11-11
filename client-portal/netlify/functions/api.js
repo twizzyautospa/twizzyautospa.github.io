@@ -15,6 +15,7 @@
  *   GET  /api/asset/<slug>/<file>         client logo, app icons and manifest (public, random slug)
  *   GET  /api/bookings?months=YYYY-MM,...[&pipeline=<id>]   portal calendar appointments
  *   POST /api/bookings {action:'save'|'cancel', ...}         book / change / cancel an appointment
+ *   POST /api/meta     {id, meta:'yes'|'no'}  mark whether a lead came from Meta (GHL tags "meta lead" / "not meta lead")
  *   GET  /api/ics?t=<signed token>        one appointment as an .ics file (add to phone calendar)
  *   GET  /api/health
  *
@@ -349,6 +350,19 @@ async function listOpportunities(pipelineId) {
   return out;
 }
 
+// Lead source: a client's explicit choice (GHL tag) wins; otherwise GHL's ad attribution.
+const TAG_META = 'meta lead';
+const TAG_NOT_META = 'not meta lead';
+const META_RE = /facebook|instagram|\bfb\b|\big\b|\bmeta\b/i;
+function metaState(o) {
+  const tags = (((o.contact || {}).tags) || []).map((t) => String(t).toLowerCase());
+  if (tags.includes(TAG_NOT_META)) return 'no';
+  if (tags.includes(TAG_META)) return 'yes';
+  const fromAd = (o.attributions || []).some((a) => /paid social/i.test(a.medium || '')
+    || META_RE.test([a.utmSource, a.utmSessionSource, a.adSource, a.utmMedium].filter(Boolean).join(' ')));
+  return fromAd || META_RE.test(o.source || '') ? 'auto' : 'unknown';
+}
+
 function slim(o) {
   const c = o.contact || {};
   return {
@@ -362,6 +376,7 @@ function slim(o) {
     createdAt: o.createdAt || null,
     updatedAt: o.updatedAt || null,
     stageChangedAt: o.lastStageChangeAt || o.lastStatusChangeAt || null,
+    meta: metaState(o),
     contact: {
       id: c.id || o.contactId || null,
       name: c.name || '',
@@ -591,6 +606,7 @@ async function saveBooking(store, user, body) {
   if (!(minutes >= 15 && minutes <= 720)) throw new HttpError(400, 'Pick how long it takes.');
   const isNew = !body.id;
   if (!isNew && (!BK_ID_RE.test(String(body.id)) || !MONTH_RE.test(String(body.month || '')))) throw new HttpError(400, 'Unknown appointment.');
+  const amount = Math.round(Math.min(1e7, Math.max(0, Number(body.amount) || 0)) * 100) / 100;
   const moveStage = !!body.stageId && body.stageId !== o.pipelineStageId;
   if (moveStage) {
     const p = (await pipelines()).find((x) => x.id === pid);
@@ -619,6 +635,7 @@ async function saveBooking(store, user, body) {
     minutes,
     address: String(body.address || '').trim().slice(0, 200),
     notes: String(body.notes || '').trim().slice(0, 1000),
+    amount,
     createdBy: (prev && prev.createdBy) || user.u,
     createdAt: (prev && prev.createdAt) || now,
     updatedAt: now,
@@ -627,16 +644,24 @@ async function saveBooking(store, user, body) {
   if (!isNew && body.month !== month) await store.delete(`bk/${pid}/${body.month}/${id}`).catch(() => {});
   noteRecentBooking(pid, id, rec);
 
+  // One GHL update for the stage move and/or the job value.
   let opportunity = null;
   let stageFailed = false;
-  if (moveStage) {
+  const patch = {};
+  if (moveStage) Object.assign(patch, { pipelineId: pid, pipelineStageId: body.stageId });
+  if (body.setValue && amount > 0) patch.monetaryValue = amount;
+  if (Object.keys(patch).length) {
     try {
-      const r = await ghl('PUT', `/opportunities/${enc(o.id)}`, { pipelineId: pid, pipelineStageId: body.stageId });
-      opportunity = slim({ ...o, ...(r.opportunity || {}), pipelineStageId: body.stageId, contact: o.contact, lastStageChangeAt: now });
+      const r = await ghl('PUT', `/opportunities/${enc(o.id)}`, patch);
+      opportunity = slim({
+        ...o, ...(r.opportunity || {}), ...patch, contact: o.contact,
+        ...(moveStage ? { lastStageChangeAt: now } : {}),
+      });
     } catch { stageFailed = true; }
   }
 
-  const text = `[Portal · ${user.n}] ${isNew ? 'Booked' : 'Appointment changed'}: ${rec.title} on ${whenText(rec, body.tz)}`
+  const price = amount > 0 ? ` ($${amount.toLocaleString('en-US')})` : '';
+  const text = `[Portal · ${user.n}] ${isNew ? 'Booked' : 'Appointment changed'}: ${rec.title}${price} on ${whenText(rec, body.tz)}`
     + `${rec.address ? ` at ${rec.address}` : ''}${rec.notes ? `. Notes: ${rec.notes}` : ''}`;
   let synced = await ghlNote(rec.contactId, text);
   if (isNew && rec.contactId) {
@@ -848,6 +873,18 @@ exports.handler = async (event) => {
       const r = await ghl('POST', `/contacts/${enc(o.contactId)}/notes`, { body: `[Portal · ${user.n}] ${text}` });
       const n = r.note || {};
       return reply(200, { note: { id: n.id, body: n.body || text, at: n.dateAdded || new Date().toISOString() } });
+    }
+
+    if (route === 'meta' && method === 'POST') {
+      const { id, meta } = parseBody(event);
+      if (meta !== 'yes' && meta !== 'no') throw new HttpError(400, 'Pick Meta or not Meta.');
+      const o = await loadOpportunity(user, id);
+      const cid = o.contactId || (o.contact && o.contact.id);
+      if (!cid) throw new HttpError(400, 'This lead has no contact in GHL.');
+      const [add, remove] = meta === 'yes' ? [TAG_META, TAG_NOT_META] : [TAG_NOT_META, TAG_META];
+      await ghl('POST', `/contacts/${enc(cid)}/tags`, { tags: [add] });
+      await ghl('DELETE', `/contacts/${enc(cid)}/tags`, { tags: [remove] }).catch(() => {});
+      return reply(200, { id: o.id, meta });
     }
 
     if (route === 'bookings' && method === 'GET') {
