@@ -1,6 +1,7 @@
 import type { Config, Context } from "@netlify/functions";
 import {
   adminConfigured,
+  adminUsername,
   assertNotLocked,
   clearCookie,
   clearLoginFailures,
@@ -50,7 +51,7 @@ import {
   SCOPES,
   SERVICES,
 } from "../lib/pricing.mts";
-import { env, fail, HttpError, isDate, isEmail, json, newId, newToken, num, oneOf, readJson, sha256, slugify, str } from "../lib/util.mts";
+import { env, fail, HttpError, isDate, isEmail, json, newId, newToken, num, oneOf, readJson, sha256, slugify, str, toUsername } from "../lib/util.mts";
 
 interface Ctx {
   req: Request;
@@ -286,23 +287,24 @@ async function authRoutes(ctx: Ctx): Promise<Response> {
 
   if (action === "login" && req.method === "POST") {
     const body = await readJson(req);
-    const email = str(body.email, 200).toLowerCase();
+    // People type their business name however they like; it is matched without case, spaces or punctuation.
+    const username = toUsername(str(body.username ?? body.email, 200));
     const password = typeof body.password === "string" ? body.password.slice(0, 200) : "";
-    if (!email || !password) fail(400, "Enter your email and password");
-    await assertNotLocked(email);
+    if (!username || !password) fail(400, "Enter your username and password");
+    await assertNotLocked(username);
 
-    if (isAdminLogin(email, password)) {
-      await clearLoginFailures(email);
+    if (isAdminLogin(username, password)) {
+      await clearLoginFailures(username);
       return json({ role: "admin" }, 200, { "set-cookie": await sessionCookie(req, { role: "admin" }) });
     }
-    const rows = await sql()`SELECT * FROM installers WHERE email = ${email}`;
+    const rows = await sql()`SELECT * FROM installers WHERE username = ${username}`;
     const ok = rows.length > 0 && (await verifyPassword(password, rows[0].password_hash));
     if (!ok) {
-      await recordLoginFailure(email);
-      fail(401, "Email or password is incorrect");
+      await recordLoginFailure(username);
+      fail(401, "Username or password is incorrect");
     }
     if (rows[0].status !== "active") fail(403, "This account is paused. Contact support.");
-    await clearLoginFailures(email);
+    await clearLoginFailures(username);
     return json({ role: "installer" }, 200, { "set-cookie": await sessionCookie(req, { role: "installer", id: rows[0].id }) });
   }
 
@@ -339,6 +341,7 @@ async function ownLead(installer: Installer, leadId: string): Promise<Lead> {
 function installerAccount(installer: Installer, ctx: Ctx) {
   return {
     companyName: installer.companyName,
+    username: installer.username,
     email: installer.email,
     phone: installer.phone,
     slug: installer.slug,
@@ -507,7 +510,9 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
         id: row.id,
         slug: row.slug,
         companyName: row.company_name,
-        email: row.email,
+        username: row.username,
+        email: row.email ?? "",
+        canSignIn: typeof row.password_hash === "string" && row.password_hash.startsWith("scrypt$"),
         phone: row.phone,
         status: row.status,
         createdAt: new Date(row.created_at).toISOString(),
@@ -526,20 +531,21 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
     const companyName = str(body.companyName, 80);
     const email = str(body.email, 200).toLowerCase();
     if (companyName.length < 2) fail(400, "Enter the company name");
-    if (!isEmail(email)) fail(400, "Enter a valid email address");
+    if (email && !isEmail(email)) fail(400, "That email address does not look right");
+    const username = await freeUsername(str(body.username, 60) || companyName);
     const hash = await hashPassword(validatePassword(body.password));
     const base = slugify(str(body.slug, 60) || companyName);
     if (base.length < 3) fail(400, "The link name must be at least 3 letters or numbers");
-    if ((await sql()`SELECT 1 FROM installers WHERE email = ${email}`).length) fail(409, "An installer with that email already exists");
+    if (email && (await sql()`SELECT 1 FROM installers WHERE email = ${email}`).length) fail(409, "An installer with that email already exists");
     let slug = base;
     for (let n = 2; (await sql()`SELECT 1 FROM installers WHERE slug = ${slug}`).length; n++) slug = `${base}-${n}`;
     const installerId = newId();
     await sql()`
-      INSERT INTO installers (id, slug, company_name, email, password_hash, phone, settings, inbound_key)
-      VALUES (${installerId}, ${slug}, ${companyName}, ${email}, ${hash}, ${str(body.phone, 40)},
+      INSERT INTO installers (id, slug, company_name, username, email, password_hash, phone, settings, inbound_key)
+      VALUES (${installerId}, ${slug}, ${companyName}, ${username}, ${email || null}, ${hash}, ${str(body.phone, 40)},
               ${j(DEFAULT_SETTINGS)}::jsonb, ${`lq_${newToken(24)}`})`;
     const created = (await installerById(installerId))!;
-    return json({ id: created.id, slug: created.slug, quoteLink: `${ctx.origin}/q/${created.slug}` }, 201);
+    return json({ id: created.id, slug: created.slug, username: created.username, quoteLink: `${ctx.origin}/q/${created.slug}` }, 201);
   }
 
   if (resource === "installers" && id) {
@@ -553,14 +559,19 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
       const phone = body.phone === undefined ? installer.phone : str(body.phone, 40);
       const email = body.email === undefined ? installer.email : str(body.email, 200).toLowerCase();
       if (companyName.length < 2) fail(400, "Enter the company name");
-      if (!isEmail(email)) fail(400, "Enter a valid email address");
-      if (email !== installer.email) {
+      if (email && !isEmail(email)) fail(400, "That email address does not look right");
+      if (email && email !== installer.email) {
         const taken = await sql()`SELECT 1 FROM installers WHERE email = ${email} AND id <> ${installer.id}`;
         if (taken.length) fail(409, "An installer with that email already exists");
       }
+      let username = installer.username;
+      if (body.username !== undefined && toUsername(str(body.username, 60)) !== installer.username) {
+        username = await freeUsername(str(body.username, 60), installer.id, true);
+      }
       await sql()`
-        UPDATE installers SET status = ${status}, company_name = ${companyName}, phone = ${phone}, email = ${email}
+        UPDATE installers SET status = ${status}, company_name = ${companyName}, phone = ${phone}, email = ${email || null}, username = ${username}
         WHERE id = ${installer.id}`;
+      if (username !== installer.username) await clearLoginFailures(installer.username);
       if (body.crm !== undefined) {
         const crm = body.crm === null ? null : cleanCrmConfig(body.crm);
         if (body.crm !== null && !crm) fail(400, "That CRM link is not valid");
@@ -569,7 +580,7 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
       if (body.password !== undefined) {
         const hash = await hashPassword(validatePassword(body.password));
         await sql()`UPDATE installers SET password_hash = ${hash} WHERE id = ${installer.id}`;
-        await clearLoginFailures(installer.email);
+        await clearLoginFailures(username);
       }
       return json({ ok: true });
     }
@@ -606,6 +617,24 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
     return json({ lead: staffView(lead, installer!) });
   }
   fail(404, "Not found");
+}
+
+/**
+ * Turn a business name into a sign-in username that nobody else has.
+ * When the owner typed the username themselves (`exact`), a clash is an error; otherwise a number is added.
+ */
+async function freeUsername(wanted: string, exceptId = "", exact = false): Promise<string> {
+  const base = toUsername(wanted);
+  if (base.length < 3) fail(400, "The username must be at least 3 letters or numbers");
+  const taken = async (name: string) =>
+    name === adminUsername() || (await sql()`SELECT 1 FROM installers WHERE username = ${name} AND id <> ${exceptId}`).length > 0;
+  if (!(await taken(base))) return base;
+  if (exact) fail(409, "That username is already taken");
+  for (let n = 2; n < 500; n++) {
+    const candidate = `${base.slice(0, 36)}${n}`;
+    if (!(await taken(candidate))) return candidate;
+  }
+  fail(409, "Could not find a free username");
 }
 
 async function crmSummary() {

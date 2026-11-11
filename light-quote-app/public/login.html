@@ -18,34 +18,10 @@
         <span data-platform-name>Lumiquote</span>
       </div>
 
-      <svg class="auth-scene" viewBox="0 0 480 290" role="img" aria-label="A house at dusk with warm lights along the roofline">
-        <defs>
-          <radialGradient id="glow"><stop offset="0" stop-color="#ffcf7a" stop-opacity=".75"/><stop offset=".45" stop-color="#ffb84a" stop-opacity=".28"/><stop offset="1" stop-color="#ffb84a" stop-opacity="0"/></radialGradient>
-          <symbol id="bulb" overflow="visible"><circle r="14" fill="url(#glow)"/><circle r="3.400" fill="#fff1cf"/></symbol>
-          <symbol id="star" overflow="visible"><circle r="1.300" fill="#dfe8ff"/></symbol>
-        </defs>
-        <g opacity=".7">
-          <use href="#star" x="38" y="34"/><use href="#star" x="96" y="72"/><use href="#star" x="152" y="26"/><use href="#star" x="214" y="44"/>
-          <use href="#star" x="300" y="22"/><use href="#star" x="352" y="64"/><use href="#star" x="420" y="38"/><use href="#star" x="452" y="96"/>
-          <use href="#star" x="64" y="118"/><use href="#star" x="402" y="128"/>
-        </g>
-        <path d="M0 262h480" stroke="#2b3a66" stroke-width="2"/>
-        <rect x="135" y="170" width="210" height="92" fill="#17244d" stroke="#3a4b80" stroke-width="2"/>
-        <path d="M110 170 240 80l130 90" fill="#101a3a" stroke="#3a4b80" stroke-width="2" stroke-linejoin="round"/>
-        <rect x="222" y="206" width="36" height="56" rx="2" fill="#0d1631" stroke="#3a4b80" stroke-width="2"/>
-        <rect x="160" y="194" width="42" height="34" rx="2" fill="#ffcf7a" opacity=".85"/>
-        <rect x="278" y="194" width="42" height="34" rx="2" fill="#ffcf7a" opacity=".85"/>
-        <path d="M416 262v-40" stroke="#3a4b80" stroke-width="5" stroke-linecap="round"/>
-        <circle cx="416" cy="196" r="34" fill="#12203f" stroke="#3a4b80" stroke-width="2"/>
-        <g class="auth-bulbs">
-          <use href="#bulb" x="110" y="170"/><use href="#bulb" x="126" y="159"/><use href="#bulb" x="142.500" y="147.500"/><use href="#bulb" x="159" y="136"/>
-          <use href="#bulb" x="175" y="125"/><use href="#bulb" x="191" y="114"/><use href="#bulb" x="207.500" y="102.500"/><use href="#bulb" x="224" y="91"/>
-          <use href="#bulb" x="240" y="80"/>
-          <use href="#bulb" x="256" y="91"/><use href="#bulb" x="272.500" y="102.500"/><use href="#bulb" x="289" y="114"/><use href="#bulb" x="305" y="125"/>
-          <use href="#bulb" x="321" y="136"/><use href="#bulb" x="337.500" y="147.500"/><use href="#bulb" x="354" y="159"/><use href="#bulb" x="370" y="170"/>
-          <use href="#bulb" x="398" y="182"/><use href="#bulb" x="424" y="172"/><use href="#bulb" x="408" y="206"/><use href="#bulb" x="434" y="202"/><use href="#bulb" x="416" y="222"/>
-        </g>
-      </svg>
+      <figure class="auth-photo">
+        <img src="/img/house/full-warm.jpg" width="1100" height="821" alt="A two-storey home at dusk with warm white lights on the roofline, tree and shrubs">
+        <figcaption>A real Lumiquote preview</figcaption>
+      </figure>
 
       <div class="auth-pitch">
         <h1>Sell the job before you pull up to the house.</h1>
@@ -61,9 +37,9 @@
       <form class="auth-form stack" id="login" novalidate>
         <div>
           <h2>Sign in</h2>
-          <p class="muted" style="margin-top:6px">Installers and admins use the same sign-in.</p>
+          <p class="muted" style="margin-top:6px">Use your business name and password.</p>
         </div>
-        <label class="field"><span>Email</span><input type="email" id="email" autocomplete="username" inputmode="email" required></label>
+        <label class="field"><span>Username</span><input type="text" id="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Your business name" required></label>
         <div class="field">
           <label class="field-label" for="password">Password</label>
           <div class="password-row">
@@ -108,7 +84,7 @@
       button.disabled = true;
       button.classList.add("is-busy");
       try {
-        const result = await api("auth/login", { method: "POST", body: { email: $("#email").value, password: $("#password").value } });
+        const result = await api("auth/login", { method: "POST", body: { username: $("#username").value, password: $("#password").value } });
         go(result.role);
       } catch (err) {
         error.textContent = err.message;

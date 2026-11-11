@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { getSetting, sql } from "./db.mts";
-import { env, fail, sha256 } from "./util.mts";
+import { env, fail, sha256, toUsername } from "./util.mts";
 
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 const COOKIE = "lq_session";
@@ -92,15 +92,20 @@ export async function getSession(req: Request): Promise<Session | null> {
   }
 }
 
-export function adminConfigured(): boolean {
-  return env("ADMIN_EMAIL").length > 0 && env("ADMIN_PASSWORD").length >= 8;
+/** The platform owner's sign-in name. ADMIN_EMAIL is still read so older set-ups keep working. */
+export function adminUsername(): string {
+  return toUsername(env("ADMIN_USERNAME") || env("ADMIN_EMAIL"));
 }
 
-export function isAdminLogin(email: string, password: string): boolean {
+export function adminConfigured(): boolean {
+  return adminUsername().length > 0 && env("ADMIN_PASSWORD").length >= 8;
+}
+
+export function isAdminLogin(username: string, password: string): boolean {
   if (!adminConfigured()) return false;
-  const emailOk = safeEqual(email.toLowerCase(), env("ADMIN_EMAIL").toLowerCase());
+  const nameOk = safeEqual(toUsername(username), adminUsername());
   const passwordOk = safeEqual(password, env("ADMIN_PASSWORD"));
-  return emailOk && passwordOk;
+  return nameOk && passwordOk;
 }
 
 const MAX_FAILS = 6;

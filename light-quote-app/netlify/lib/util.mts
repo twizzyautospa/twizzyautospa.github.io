@@ -76,6 +76,15 @@ export function slugify(value: string): string {
     .slice(0, 40);
 }
 
+/** Sign-in names ignore case, spaces and punctuation, so "Bright Home Care" and "brighthomecare" are the same. */
+export function toUsername(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 40);
+}
+
 export const isEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value) && value.length <= 200;
 
 export const isDate = (value: unknown): value is string =>

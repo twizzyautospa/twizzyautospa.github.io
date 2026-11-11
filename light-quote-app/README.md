@@ -14,7 +14,7 @@ The platform is called Lumiquote. The name can be changed on the admin Overview 
 | Installer | `/app` | Leads, roofline measuring, quote builder, branding, pricing, integrations. |
 | Platform owner | `/admin` | Every installer and every lead, add or pause installers, open any installer's dashboard. |
 
-Installers and the owner sign in at `/login`.
+Installers and the owner sign in at `/login` with a username and password. An installer's username comes from their business name; capitals, spaces and punctuation are ignored when they type it.
 
 ## How it is built
 
@@ -30,7 +30,7 @@ Installers and the owner sign in at `/login`.
 
 | Variable | Needed | Purpose |
 |---|---|---|
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Yes | The platform owner's sign-in. Password must be 8+ characters. Without both, admin sign-in is off. |
+| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Yes | The platform owner's sign-in. Password must be 8+ characters. Without both, admin sign-in is off. |
 | `SESSION_SECRET` | No | 32+ characters. If unset, one is generated and stored in the database. |
 | `PREVIEW_PROVIDER` | No | `off` disables previews, `mock` returns the original photo (testing). Default: on when Gemini credentials exist. |
 | `PREVIEW_MODEL` | No | Image model. Default `gemini-3.1-flash-image`. |
@@ -54,7 +54,7 @@ netlify dev
 netlify database migrations apply
 ```
 
-Put `ADMIN_EMAIL`, `ADMIN_PASSWORD` and `PREVIEW_PROVIDER=mock` in a `.env` file first (see `.env.example`). Then open `http://localhost:8888/login`.
+Put `ADMIN_USERNAME`, `ADMIN_PASSWORD` and `PREVIEW_PROVIDER=mock` in a `.env` file first (see `.env.example`). Then open `http://localhost:8888/login`.
 
 ```bash
 npm test

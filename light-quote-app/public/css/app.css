@@ -302,6 +302,9 @@ dialog::backdrop { background: rgba(10, 16, 30, 0.55); }
 .auth-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.25rem; letter-spacing: -0.01em; color: #fff; }
 .auth-brand svg { width: 36px; height: 36px; border-radius: 23%; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.28); }
 .auth-scene { width: 100%; max-width: 520px; align-self: center; }
+.auth-photo { margin: 0; width: 100%; max-width: 560px; align-self: center; position: relative; border-radius: 18px; overflow: hidden; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 30px 70px rgba(0, 0, 0, 0.45); }
+.auth-photo img { width: 100%; height: auto; display: block; }
+.auth-photo figcaption { position: absolute; left: 12px; bottom: 12px; background: rgba(8, 13, 32, 0.72); color: #fff; font-size: 0.72rem; padding: 4px 10px; border-radius: 999px; }
 .auth-bulbs use { animation: twinkle 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
 .auth-bulbs use:nth-child(3n) { animation-delay: 0.6s; }
 .auth-bulbs use:nth-child(3n + 1) { animation-delay: 1.3s; }
@@ -329,6 +332,8 @@ dialog::backdrop { background: rgba(10, 16, 30, 0.55); }
   .auth { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .auth-hero { gap: 14px; padding: 20px 20px 22px; }
   .auth-scene { max-width: 300px; }
+  .auth-photo { max-width: 340px; }
+  .auth-photo figcaption { display: none; }
   .auth-pitch h1 { font-size: 1.25rem; }
   .auth-pitch ul { display: none; }
   .auth-panel { justify-content: flex-start; padding: 28px 20px 32px; }

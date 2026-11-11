@@ -24,7 +24,11 @@ export interface Installer {
   id: string;
   slug: string;
   companyName: string;
+  /** Sign-in name, derived from the business name. */
+  username: string;
+  /** Optional contact email, used for alerts. Not used to sign in. */
   email: string;
+  canSignIn: boolean;
   phone: string;
   status: string;
   settings: InstallerSettings;
@@ -39,7 +43,9 @@ export function toInstaller(row: any): Installer {
     id: row.id,
     slug: row.slug,
     companyName: row.company_name,
-    email: row.email,
+    username: row.username ?? "",
+    email: row.email ?? "",
+    canSignIn: typeof row.password_hash === "string" && row.password_hash.startsWith("scrypt$"),
     phone: row.phone,
     status: row.status,
     settings: normalizeSettings(row.settings),

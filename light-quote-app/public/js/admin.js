@@ -100,7 +100,7 @@ async function showInstallers() {
           <tbody>
             ${installers.map((i) => html`
               <tr>
-                <td><strong>${i.companyName}</strong>${i.crmLinked ? html` <span class="pill pill-new">CRM linked</span>` : ""}<div class="small muted">${i.email}</div></td>
+                <td><strong>${i.companyName}</strong>${i.crmLinked ? html` <span class="pill pill-new">CRM linked</span>` : ""}<div class="small muted">Signs in as <strong>${i.username}</strong>${i.canSignIn ? "" : html` · <span style="color:var(--bad)">no password set</span>`}</div></td>
                 <td><button type="button" class="btn btn-sm btn-ghost" data-copy="${i.quoteLink}">/q/${i.slug}</button></td>
                 <td class="right num">${i.leadCount}</td>
                 <td class="right num">${i.bookedCount}</td>
@@ -121,13 +121,17 @@ function openNewInstaller() {
   setHtml($("#dialog-body"), html`
     <form id="installer-form" class="stack" novalidate>
       <h2 id="dialog-title">Add installer</h2>
-      <label class="field"><span>Company name</span><input type="text" name="companyName" required maxlength="80"></label>
+      <label class="field"><span>Company name</span><input type="text" name="companyName" id="new-company" required maxlength="80"></label>
       <div class="form-grid">
-        <label class="field"><span>Sign-in email</span><input type="email" name="email" required autocomplete="off"></label>
-        <label class="field"><span>Phone</span><input type="tel" name="phone" autocomplete="off"></label>
+        <label class="field"><span>Username</span><input type="text" name="username" id="new-username" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="40">
+          <span class="hint">What they type to sign in. Filled in from the company name.</span></label>
+        <label class="field"><span>Password</span><input type="text" name="password" required minlength="8" autocomplete="off">
+          <span class="hint">At least 8 characters. They can change it in Settings.</span></label>
       </div>
-      <label class="field"><span>Temporary password</span><input type="text" name="password" required minlength="8" autocomplete="off">
-        <span class="hint">At least 8 characters. They can change it in Settings.</span></label>
+      <div class="form-grid">
+        <label class="field"><span>Phone <span class="muted" style="font-weight:400">(optional)</span></span><input type="tel" name="phone" autocomplete="off"></label>
+        <label class="field"><span>Email <span class="muted" style="font-weight:400">(optional)</span></span><input type="email" name="email" autocomplete="off"></label>
+      </div>
       <p class="error-text" id="installer-error" role="alert" hidden></p>
       <div class="row"><button type="submit" class="btn">Create installer</button><button type="button" class="btn btn-ghost" data-close>Cancel</button></div>
     </form>`);
@@ -141,7 +145,7 @@ function openManage(id) {
     <div class="stack">
       <h2 id="dialog-title">${i.companyName}</h2>
       <dl class="kv">
-        <dt>Email</dt><dd>${i.email}</dd>
+        <dt>Username</dt><dd><strong>${i.username}</strong></dd>
         <dt>Phone</dt><dd>${i.phone || "-"}</dd>
         <dt>Quote link</dt><dd><a href="${i.quoteLink}" target="_blank" rel="noopener">${i.quoteLink}</a></dd>
         <dt>Joined</dt><dd>${dateTime(i.createdAt)}</dd>
@@ -149,11 +153,13 @@ function openManage(id) {
       <form class="card card-flat stack" id="installer-edit" data-id="${i.id}" novalidate>
         <div class="section-title" style="margin:0">Account details</div>
         <label class="field"><span>Company name</span><input type="text" name="companyName" value="${i.companyName}" maxlength="80" required></label>
+        <label class="field"><span>Username</span><input type="text" name="username" value="${i.username}" required autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="40">
+          <span class="hint">What they type to sign in. Capitals and spaces do not matter.</span></label>
         <div class="form-grid">
-          <label class="field"><span>Sign-in email</span><input type="email" name="email" value="${i.email}" required autocomplete="off"></label>
           <label class="field"><span>Phone</span><input type="tel" name="phone" value="${i.phone}" autocomplete="off"></label>
+          <label class="field"><span>Email <span class="muted" style="font-weight:400">(optional)</span></span><input type="email" name="email" value="${i.email}" autocomplete="off"></label>
         </div>
-        ${i.email.endsWith(".invalid") ? html`<p class="notice notice-warn">This installer cannot sign in yet. Set their real email here, then set a password below.</p>` : ""}
+        ${i.canSignIn ? "" : html`<p class="notice notice-warn">This installer cannot sign in yet. Set a password for them below.</p>`}
         <div><button type="submit" class="btn btn-secondary">Save details</button></div>
       </form>
       <div class="card card-flat stack">
@@ -319,6 +325,14 @@ document.addEventListener("keydown", (event) => {
   if (row && event.key === "Enter") openLead(row.dataset.lead).catch((error) => toast(error.message, "error"));
 });
 
+// The username follows the company name until the owner types their own.
+document.addEventListener("input", (event) => {
+  if (event.target.id === "new-username") event.target.dataset.touched = "1";
+  if (event.target.id !== "new-company") return;
+  const username = $("#new-username");
+  if (username && !username.dataset.touched) username.value = event.target.value.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 40);
+});
+
 document.addEventListener("change", (event) => {
   if (event.target.id === "f-installer") { leadFilter.installer = event.target.value; showLeads(); }
   if (event.target.id === "f-status") { leadFilter.status = event.target.value; showLeads(); }
@@ -346,9 +360,8 @@ document.addEventListener("submit", async (event) => {
   try {
     const created = await api("admin/installers", { method: "POST", body: Object.fromEntries(new FormData(form)) });
     dialog.close();
-    toast("Installer created");
+    toast(`Installer created. They sign in as ${created.username}.`);
     await showInstallers();
-    copyText(created.quoteLink);
   } catch (error) {
     errorBox.textContent = error.message;
     errorBox.hidden = false;

@@ -521,6 +521,7 @@ function showSettings() {
       <section class="card stack">
         <div class="section-title" style="margin:0">Your business</div>
         <label class="field"><span>Company name</span><input type="text" id="s-company" value="${account.companyName}" maxlength="80"></label>
+        <p class="small muted">You sign in as <strong>${account.username}</strong>. Ask your account manager if you need it changed.</p>
         <label class="field"><span>Phone shown to customers</span><input type="tel" id="s-phone" value="${account.phone}"></label>
         <label class="field"><span>Quote link name</span><input type="text" id="s-slug" value="${account.slug}" maxlength="40">
           <span class="hint">Your link is ${location.origin}/q/<strong>${account.slug}</strong>. Changing it breaks links you have already shared.</span></label>
@@ -594,7 +595,7 @@ function showSettings() {
 
       <section class="card stack">
         <div class="section-title" style="margin:0">Alerts and connections</div>
-        <label class="field"><span>Send new-lead alerts to</span><input type="email" id="s-notify" value="${s.notifyEmail}" placeholder="${account.email}">
+        <label class="field"><span>Send new-lead alerts to</span><input type="email" id="s-notify" value="${s.notifyEmail}" placeholder="${account.email || "you@example.com"}">
           <span class="hint">Email alerts need the platform owner to connect an email service.</span></label>
         <label class="field"><span>Webhook URL</span><input type="url" id="s-webhook" value="${s.webhookUrl}" placeholder="https://hooks.zapier.com/...">
           <span class="hint">We POST new leads, sent quotes and bookings here. Works with Zapier, Make, GoHighLevel and most CRMs.</span></label>
