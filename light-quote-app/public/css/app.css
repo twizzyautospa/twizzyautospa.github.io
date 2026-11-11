@@ -300,7 +300,7 @@ dialog::backdrop { background: rgba(10, 16, 30, 0.55); }
 }
 .auth-single .auth-hero { justify-content: center; align-items: flex-start; max-width: none; padding-inline: clamp(24px, 10vw, 160px); }
 .auth-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.25rem; letter-spacing: -0.01em; color: #fff; }
-.auth-brand svg { width: 30px; height: 30px; }
+.auth-brand svg { width: 36px; height: 36px; border-radius: 23%; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.28); }
 .auth-scene { width: 100%; max-width: 520px; align-self: center; }
 .auth-bulbs use { animation: twinkle 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
 .auth-bulbs use:nth-child(3n) { animation-delay: 0.6s; }
