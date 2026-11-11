@@ -64,15 +64,20 @@
           </div>
           <p class="mono-line">No monthly fees <span>·</span> Your logo on every page <span>·</span> Works on any phone</p>
         </div>
-        <div class="hero-art" aria-hidden="true">
-          <div class="window">
-            <svg class="scene" id="hero-scene" viewBox="0 0 320 220"></svg>
+        <div class="hero-art">
+          <div class="ba" id="ba">
+            <img class="ba-after" src="/img/house/full-warm.jpg" width="1100" height="821" alt="The same home at dusk with warm white lights on the roofline, tree and shrubs">
+            <img class="ba-before" src="/img/house/before.jpg" width="1100" height="821" alt="A two-storey home in daylight, before any lights">
+            <span class="ba-tag ba-tag-before">Their photo</span>
+            <span class="ba-tag ba-tag-after">Lumiquote preview</span>
+            <input class="ba-range" id="ba-range" type="range" min="0" max="100" value="42" aria-label="Slide to compare the photo with the lit-up preview">
+            <span class="ba-handle" aria-hidden="true"><i></i></span>
           </div>
-          <div class="chip chip-a">
+          <div class="chip chip-a" aria-hidden="true">
             <span class="chip-icon"><svg><use href="#i-ruler"/></svg></span>
             <span><strong>Roofline traced</strong><small>118 ft, measured from above</small></span>
           </div>
-          <div class="chip chip-b">
+          <div class="chip chip-b" aria-hidden="true">
             <span class="chip-icon good"><svg><use href="#i-check"/></svg></span>
             <span><strong>Quote accepted</strong><small>Install date picked by the customer</small></span>
           </div>
@@ -163,7 +168,7 @@
                 </div>
               </div>
             </fieldset>
-            <p class="fineprint">Example prices shown. You set your own rate per foot, tree prices and minimum job.</p>
+            <p class="fineprint">Sample home. Every lit version here was made by Lumiquote's own preview engine from one daytime photo. Example prices shown; you set your own rates.</p>
           </div>
 
           <div class="phone" id="phone" aria-live="polite">
@@ -172,13 +177,14 @@
               <span class="phone-tel" id="demo-tel">Call us</span>
             </div>
             <div class="phone-scene">
-              <svg class="scene" id="demo-scene" viewBox="0 0 320 220" role="img" aria-label="Preview of a house with holiday lights"></svg>
-              <span class="phone-tag">Preview of their home</span>
+              <img id="demo-photo" src="/img/house/roofline-warm.jpg" width="1100" height="821" loading="lazy" decoding="async" alt="The same home at dusk with warm white lights along the roofline">
+              <span class="phone-tag" id="demo-tag">Preview of their home</span>
             </div>
             <div class="phone-tabs seg" data-group="color">
               <button type="button" data-value="warm" aria-pressed="true">Warm white</button>
               <button type="button" data-value="cool" aria-pressed="false">Bright white</button>
               <button type="button" data-value="multi" aria-pressed="false">Multicolour</button>
+              <button type="button" data-value="before" aria-pressed="false">Before</button>
             </div>
             <div class="phone-price">
               <span>Estimated price</span>
