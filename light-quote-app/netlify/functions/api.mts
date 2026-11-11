@@ -16,6 +16,7 @@ import {
   type Session,
 } from "../lib/auth.mts";
 import { previewProvider } from "../lib/ai.mts";
+import { cleanCrmConfig, crmActive, pullAll, pushLeadToCrm } from "../lib/crm.mts";
 import { getSetting, j, setSetting, sql } from "../lib/db.mts";
 import { parseImageDataUrl, readFile } from "../lib/files.mts";
 import {
@@ -49,7 +50,7 @@ import {
   SCOPES,
   SERVICES,
 } from "../lib/pricing.mts";
-import { fail, HttpError, isDate, isEmail, json, newId, newToken, num, oneOf, readJson, sha256, slugify, str } from "../lib/util.mts";
+import { env, fail, HttpError, isDate, isEmail, json, newId, newToken, num, oneOf, readJson, sha256, slugify, str } from "../lib/util.mts";
 
 interface Ctx {
   req: Request;
@@ -108,6 +109,7 @@ function notify(ctx: Ctx, installer: Installer, lead: Lead, event: EventName): v
     "quote.declined": `${who} declined your quote`,
   };
   const work = Promise.all([
+    pushLeadToCrm(installer, lead, event, ctx.origin),
     sendWebhook(installer.settings.webhookUrl, event, payload),
     event === "quote.sent"
       ? Promise.resolve()
@@ -345,6 +347,7 @@ function installerAccount(installer: Installer, ctx: Ctx) {
     inboundKey: installer.inboundKey,
     inboundUrl: `${ctx.origin}/api/inbound/leads`,
     previewsAvailable: previewProvider() !== "off",
+    crmLinked: crmActive(installer),
   };
 }
 
@@ -408,7 +411,9 @@ async function installerRoutes(ctx: Ctx): Promise<Response> {
       await sql()`
         UPDATE leads SET status = ${status}, notes = ${notes}, measurement = ${j(measurement)}::jsonb, updated_at = now()
         WHERE id = ${lead.id}`;
-      return json({ lead: staffView((await leadById(lead.id))!, installer) });
+      const updated = (await leadById(lead.id))!;
+      if (updated.status !== lead.status) ctx.context.waitUntil(pushLeadToCrm(installer, updated, "status.changed", ctx.origin));
+      return json({ lead: staffView(updated, installer) });
     }
 
     if (!action && req.method === "DELETE") {
@@ -471,7 +476,14 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
       },
       platform: await platform(),
       previewsAvailable: previewProvider() !== "off",
+      crm: await crmSummary(),
     });
+  }
+
+  // Pull booked, completed and lost jobs from every linked CRM pipeline right now.
+  if (resource === "crm-sync" && req.method === "POST") {
+    const rows = await sql()`SELECT * FROM installers WHERE crm IS NOT NULL`;
+    return json({ results: await pullAll(rows.map(toInstaller)), crm: await crmSummary() });
   }
 
   if (resource === "platform" && req.method === "PUT") {
@@ -504,6 +516,7 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
         bookedValue: row.booked_value,
         lastLeadAt: row.last_lead_at ? new Date(row.last_lead_at).toISOString() : null,
         quoteLink: `${ctx.origin}/q/${row.slug}`,
+        crmLinked: cleanCrmConfig(row.crm) !== null,
       })),
     });
   }
@@ -548,6 +561,11 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
       await sql()`
         UPDATE installers SET status = ${status}, company_name = ${companyName}, phone = ${phone}, email = ${email}
         WHERE id = ${installer.id}`;
+      if (body.crm !== undefined) {
+        const crm = body.crm === null ? null : cleanCrmConfig(body.crm);
+        if (body.crm !== null && !crm) fail(400, "That CRM link is not valid");
+        await sql()`UPDATE installers SET crm = ${j(crm)}::jsonb WHERE id = ${installer.id}`;
+      }
       if (body.password !== undefined) {
         const hash = await hashPassword(validatePassword(body.password));
         await sql()`UPDATE installers SET password_hash = ${hash} WHERE id = ${installer.id}`;
@@ -588,6 +606,21 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
     return json({ lead: staffView(lead, installer!) });
   }
   fail(404, "Not found");
+}
+
+async function crmSummary() {
+  const [row] = await sql()`
+    SELECT (SELECT count(*)::int FROM installers WHERE crm IS NOT NULL) AS installers,
+           (SELECT count(*)::int FROM leads WHERE crm->>'opportunityId' IS NOT NULL) AS linked,
+           (SELECT count(*)::int FROM leads WHERE crm->>'error' IS NOT NULL) AS failing,
+           (SELECT max(crm->>'syncedAt') FROM leads WHERE crm IS NOT NULL) AS last_push`;
+  return {
+    tokenSet: env("GHL_TOKEN").length > 0 && env("GHL_LOCATION_ID").length > 0,
+    installers: row.installers,
+    linkedLeads: row.linked,
+    failingLeads: row.failing,
+    lastPushAt: row.last_push ?? null,
+  };
 }
 
 /* ------------------------------------------------------------------ inbound (CRM and booking integrations) */

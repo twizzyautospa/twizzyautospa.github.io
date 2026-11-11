@@ -93,7 +93,7 @@ function renderLeads() {
             ${shown.map((l) => html`
               <tr class="clickable" data-lead="${l.id}" tabindex="0">
                 <td><strong>${l.customerName}</strong><div class="small muted">${l.address || "No address"}</div></td>
-                <td>${SERVICE_LABELS[l.service] || "-"}${l.hasPhotos ? "" : html`<div class="tiny muted">No photo</div>`}</td>
+                <td>${l.source === "crm" ? "Portal booking" : html`${SERVICE_LABELS[l.service] || "-"}${l.hasPhotos ? "" : html`<div class="tiny muted">No photo</div>`}`}</td>
                 <td class="num nowrap">${l.quoteTotal != null ? money(l.quoteTotal) : l.estimate ? html`<span class="muted">${money(l.estimate.low)}–${money(l.estimate.high)}</span>` : "-"}</td>
                 <td>${pill(l.status)}${l.bookingDate ? html`<div class="tiny muted">${dateOnly(l.bookingDate)}</div>` : ""}</td>
                 <td class="nowrap muted">${timeAgo(l.createdAt)}</td>
@@ -165,7 +165,8 @@ function renderLead() {
           <dl class="kv">
             <dt>Phone</dt><dd>${lead.customerPhone ? html`<a href="${telHref(lead.customerPhone)}">${lead.customerPhone}</a>` : "-"}</dd>
             <dt>Email</dt><dd>${lead.customerEmail ? html`<a href="mailto:${lead.customerEmail}">${lead.customerEmail}</a>` : "-"}</dd>
-            <dt>Received</dt><dd>${dateTime(lead.createdAt)} <span class="muted">via ${lead.source}</span></dd>
+            <dt>Received</dt><dd>${dateTime(lead.createdAt)} <span class="muted">via ${lead.source === "crm" ? "LeadThru portal" : lead.source}</span></dd>
+            ${account.crmLinked ? html`<dt>Pipeline</dt><dd>${crmStatus()}</dd>` : ""}
           </dl>
           ${lead.address ? html`
             <div class="row" style="margin-top:14px">
@@ -176,7 +177,8 @@ function renderLead() {
 
         <section class="card">
           <div class="section-title">What they want</div>
-          <dl class="kv">
+          ${lead.source === "crm" ? html`<p class="notice notice-info">This job was booked in your LeadThru portal, so there are no quiz answers. The appointment date is on the portal calendar.</p>` : ""}
+          <dl class="kv" ${raw(lead.source === "crm" ? "hidden" : "")}>
             <dt>Light up</dt><dd><strong>${SERVICE_LABELS[s.service]}</strong></dd>
             ${s.service !== "trees" ? html`
               <dt>Home</dt><dd>${SIZE_LABELS[s.homeSize]}, ${s.stories}-storey</dd>
@@ -241,6 +243,17 @@ function renderLead() {
 
   renderQuote();
   initMap();
+}
+
+/** One line telling the installer whether this lead is in their CRM pipeline. */
+function crmStatus() {
+  const crm = lead.crm;
+  if (crm?.error) return html`<span style="color:var(--bad)">Not synced: ${crm.error}</span>`;
+  if (crm?.opportunityId) {
+    const how = crm.imported ? "Came from your LeadThru pipeline" : crm.linkedExisting ? "Matched to an existing lead in your LeadThru pipeline" : "Added to your LeadThru pipeline";
+    return html`${how} <span class="muted">· ${timeAgo(crm.syncedAt)}</span>`;
+  }
+  return html`<span class="muted">Syncing to your LeadThru pipeline…</span>`;
 }
 
 /* ---------- quote builder ---------- */

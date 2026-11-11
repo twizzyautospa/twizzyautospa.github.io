@@ -80,3 +80,24 @@ test("image type comes from the file's bytes", () => {
   assert.equal(sniffImage(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0]))?.ext, "jpg");
   assert.equal(sniffImage(Buffer.from("<svg onload=alert(1)>")), null);
 });
+
+import { cleanCrmConfig } from "../netlify/lib/crm-config.mts";
+import { toE164 } from "../netlify/lib/ghl.mts";
+
+test("phone numbers are normalised for the CRM", () => {
+  assert.equal(toE164("(416) 555-0123"), "+14165550123");
+  assert.equal(toE164("1 416 555 0123"), "+14165550123");
+  assert.equal(toE164("+44 20 7946 0958"), "+442079460958");
+  assert.equal(toE164("ext."), "");
+});
+
+test("a CRM link needs a pipeline and all five stages", () => {
+  const stages = { new: "stage-new-1", quoted: "stage-quoted-1", booked: "stage-booked-1", completed: "stage-done-1", lost: "stage-lost-1" };
+  const ok = cleanCrmConfig({ provider: "ghl", pipelineId: "pipeline-1", stages, since: "2026-11-11T00:00:00Z" });
+  assert.equal(ok.pipelineId, "pipeline-1");
+  assert.equal(ok.importBooked, true);
+  assert.equal(cleanCrmConfig({ provider: "ghl", pipelineId: "pipeline-1", stages: { ...stages, lost: "" } }), null);
+  assert.equal(cleanCrmConfig({ provider: "other", pipelineId: "pipeline-1", stages }), null);
+  assert.equal(cleanCrmConfig({ provider: "ghl", pipelineId: "../../etc", stages }), null);
+  assert.equal(cleanCrmConfig(null), null);
+});

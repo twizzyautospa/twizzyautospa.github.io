@@ -14,6 +14,7 @@ import {
   type Selections,
 } from "./pricing.mts";
 import { newId, newToken } from "./util.mts";
+import { cleanCrmConfig, type CrmConfig, type LeadCrm } from "./crm-config.mts";
 
 export const STATUSES = ["new", "quoted", "booked", "completed", "declined", "lost"] as const;
 export const MAX_CUSTOMER_REGENS = 2;
@@ -29,6 +30,8 @@ export interface Installer {
   settings: InstallerSettings;
   inboundKey: string;
   createdAt: string;
+  /** Link to a CRM pipeline. Set by the platform owner only, never by the installer. */
+  crm: CrmConfig | null;
 }
 
 export function toInstaller(row: any): Installer {
@@ -42,6 +45,7 @@ export function toInstaller(row: any): Installer {
     settings: normalizeSettings(row.settings),
     inboundKey: row.inbound_key,
     createdAt: new Date(row.created_at).toISOString(),
+    crm: cleanCrmConfig(row.crm),
   };
 }
 
@@ -94,6 +98,7 @@ export interface Lead {
   quote: Quote | null;
   booking: { date: string; acceptedAt: string } | null;
   notes: string;
+  crm: LeadCrm | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -124,6 +129,7 @@ export function toLead(row: any): Lead {
     quote: row.quote ?? null,
     booking: row.booking ?? null,
     notes: row.notes,
+    crm: row.crm ?? null,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
   };

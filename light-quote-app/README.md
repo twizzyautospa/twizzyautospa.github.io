@@ -36,6 +36,7 @@ Installers and the owner sign in at `/login`.
 | `PREVIEW_MODEL` | No | Image model. Default `gemini-3.1-flash-image`. |
 | `GEMINI_API_KEY` | No | Only if not using Netlify AI Gateway, which injects it automatically on credit-based plans after the first production deploy. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | No | Turns on email alerts to installers through Resend. |
+| `GHL_TOKEN`, `GHL_LOCATION_ID` | No | Turns on the GoHighLevel sync for linked installers. |
 
 On Netlify, variables must include the **Functions** scope, and a redeploy is needed after changing them.
 
@@ -84,6 +85,16 @@ curl -X POST https://YOUR-SITE/api/inbound/leads \
 ```
 
 `name` and one of `phone` or `email` are required. `service` is `roofline`, `trees` or `full`. Sending `bookingDate` (YYYY-MM-DD) files it as booked.
+
+## GoHighLevel sync
+
+An installer can be linked to one pipeline in the platform's GoHighLevel location. The link is set by the platform owner (the `crm` column on the installer), never by the installer.
+
+- **Out, as it happens:** a new request upserts the contact (matched by phone or email) and creates an opportunity in the first stage, or links to the opportunity that contact already has in the pipeline. Saving a quote, the customer accepting or declining, and status changes in the dashboard move the opportunity to the matching stage and set its value. Notes are added to the contact.
+- **In, every 15 minutes:** opportunities moved to the booked, completed or lost stage update the linked lead. Jobs booked in the pipeline that did not start as a quote request are added to the dashboard, from the moment the link was created onward.
+- Sync failures never block a request. The error is saved on the lead and shown in the lead view and on the admin Overview, which also has a "Pull from pipeline now" button.
+- Needs `GHL_TOKEN` and `GHL_LOCATION_ID` on the site. `GHL_API_BASE` points the client at a stand-in server for local testing.
+- Booking dates made in the LeadThru portal are stored by the portal, not in GoHighLevel, so imported jobs arrive without a date.
 
 ## Not built yet
 

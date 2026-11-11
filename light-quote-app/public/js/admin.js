@@ -61,6 +61,7 @@ async function showOverview() {
       <div class="tile"><div class="label">Booked value</div><div class="value">${money(t.bookedValue)}</div></div>
     </div>
     <div class="settings-grid" style="margin-bottom:20px">
+      <section class="card stack" id="crm-card">${crmCard(overview.crm)}</section>
       <section class="card stack">
         <div class="section-title" style="margin:0">Platform name</div>
         <p class="small muted">Shown to installers on the sign-in page and dashboard. Homeowners never see it: their pages carry only the installer's brand.</p>
@@ -69,6 +70,21 @@ async function showOverview() {
     </div>
     <h2 style="margin-bottom:12px">Latest leads</h2>
     ${leadsTable(recent.leads.slice(0, 8))}`);
+}
+
+function crmCard(crm, results) {
+  return html`
+    <div class="section-title" style="margin:0">GoHighLevel sync</div>
+    ${crm.tokenSet ? "" : html`<p class="notice notice-warn">The GoHighLevel token is not set on this site, so nothing is syncing.</p>`}
+    <dl class="kv">
+      <dt>Linked installers</dt><dd>${crm.installers}</dd>
+      <dt>Leads in a pipeline</dt><dd>${crm.linkedLeads}</dd>
+      <dt>Failed to sync</dt><dd>${crm.failingLeads ? html`<strong style="color:var(--bad)">${crm.failingLeads}</strong> (open the lead to see why)` : "0"}</dd>
+      <dt>Last push</dt><dd>${crm.lastPushAt ? timeAgo(crm.lastPushAt) : "Nothing sent yet"}</dd>
+    </dl>
+    <p class="small muted">New requests, quotes and bookings are pushed to the pipeline as they happen. Jobs booked, completed or lost in the pipeline are pulled in every 15 minutes.</p>
+    <div><button type="button" class="btn btn-secondary" id="crm-sync" ${raw(crm.tokenSet && crm.installers ? "" : "disabled")}>Pull from pipeline now</button></div>
+    ${results ? html`<ul class="tips">${results.length ? results.map((r) => html`<li>${r.installer}: ${r.error ? html`<span style="color:var(--bad)">${r.error}</span>` : `checked ${r.checked}, updated ${r.updated}, added ${r.imported}`}</li>`) : html`<li>No linked installers.</li>`}</ul>` : ""}`;
 }
 
 /* ---------- installers ---------- */
@@ -84,7 +100,7 @@ async function showInstallers() {
           <tbody>
             ${installers.map((i) => html`
               <tr>
-                <td><strong>${i.companyName}</strong><div class="small muted">${i.email}</div></td>
+                <td><strong>${i.companyName}</strong>${i.crmLinked ? html` <span class="pill pill-new">CRM linked</span>` : ""}<div class="small muted">${i.email}</div></td>
                 <td><button type="button" class="btn btn-sm btn-ghost" data-copy="${i.quoteLink}">/q/${i.slug}</button></td>
                 <td class="right num">${i.leadCount}</td>
                 <td class="right num">${i.bookedCount}</td>
@@ -250,6 +266,12 @@ document.addEventListener("click", async (event) => {
   const closest = (selector) => target.closest?.(selector);
 
   if (target.id === "new-installer") return openNewInstaller();
+  if (target.id === "crm-sync") {
+    return busy(target, async () => {
+      const { results, crm } = await api("admin/crm-sync", { method: "POST", body: {} });
+      setHtml($("#crm-card"), crmCard(crm, results));
+    });
+  }
   if (target.id === "save-platform") {
     return busy(target, async () => { setPlatform(await api("admin/platform", { method: "PUT", body: { name: $("#platform-name").value } })); toast("Saved"); });
   }
