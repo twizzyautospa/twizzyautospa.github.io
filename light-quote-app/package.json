@@ -1,0 +1,18 @@
+{
+  "name": "light-quote-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "White-label quoting and booking software for Christmas light installers",
+  "scripts": {
+    "dev": "netlify dev",
+    "migrate": "netlify database migrations apply",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@google/genai": "^3.1.0",
+    "@netlify/blobs": "^11.1.9",
+    "@netlify/database": "^2.0.3",
+    "@netlify/functions": "^6.1.1"
+  }
+}

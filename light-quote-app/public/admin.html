@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Admin</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="staff">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="logo" id="logo">Admin</div>
+      <nav aria-label="Admin sections">
+        <button type="button" data-nav="overview">Overview</button>
+        <button type="button" data-nav="installers">Installers</button>
+        <button type="button" data-nav="leads">All leads</button>
+      </nav>
+      <button type="button" class="link-btn" id="logout">Sign out</button>
+    </div>
+  </header>
+  <main class="page" id="page"></main>
+  <dialog id="dialog" aria-labelledby="dialog-title"><div class="dialog-body" id="dialog-body"></div></dialog>
+  <script type="module" src="/js/admin.js"></script>
+</body>
+</html>

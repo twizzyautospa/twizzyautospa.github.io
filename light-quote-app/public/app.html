@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Installer dashboard</title>
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="staff">
+  <div class="banner" id="admin-banner" hidden>
+    You are viewing this dashboard as the installer.
+    <button type="button" class="btn btn-sm btn-secondary" id="return-admin">Return to admin</button>
+  </div>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="logo" id="logo"></div>
+      <nav aria-label="Dashboard sections">
+        <button type="button" data-nav="leads">Leads</button>
+        <button type="button" data-nav="settings">Settings</button>
+      </nav>
+      <button type="button" class="link-btn" id="share">Copy my quote link</button>
+      <button type="button" class="link-btn" id="logout">Sign out</button>
+    </div>
+  </header>
+  <main class="page" id="page"></main>
+  <script src="/vendor/leaflet/leaflet.js"></script>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

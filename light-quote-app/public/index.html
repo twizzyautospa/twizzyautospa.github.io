@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Holiday lighting quotes</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="staff">
+  <main class="auth-wrap">
+    <div class="card auth-card stack center">
+      <h1 id="platform-name">Holiday lighting quotes</h1>
+      <p class="muted">Quoting and booking software for Christmas light installers.</p>
+      <a class="btn btn-lg btn-block" href="/login">Sign in</a>
+      <p class="small muted">Looking for a quote? Use the link your installer sent you.</p>
+    </div>
+  </main>
+  <script type="module">
+    import { $, api } from "/js/lib.js";
+    api("public/platform").then((p) => { $("#platform-name").textContent = p.name; document.title = p.name; }).catch(() => {});
+  </script>
+</body>
+</html>

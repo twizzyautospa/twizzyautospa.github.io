@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Sign in</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="staff">
+  <main class="auth-wrap">
+    <form class="card auth-card stack" id="login" novalidate>
+      <div>
+        <h1 id="platform-name">Sign in</h1>
+        <p class="muted" style="margin-top:6px">Installer and admin sign-in.</p>
+      </div>
+      <label class="field"><span>Email</span><input type="email" id="email" autocomplete="username" required></label>
+      <label class="field"><span>Password</span><input type="password" id="password" autocomplete="current-password" required></label>
+      <p class="error-text" id="error" role="alert" hidden></p>
+      <button type="submit" class="btn btn-lg btn-block" id="submit">Sign in</button>
+    </form>
+  </main>
+  <script type="module">
+    import { $, api } from "/js/lib.js";
+
+    const go = (role) => (location.href = role === "admin" ? "/admin" : "/app");
+    api("public/platform").then((p) => { $("#platform-name").textContent = p.name; document.title = `Sign in · ${p.name}`; }).catch(() => {});
+    api("auth/me").then((me) => { if (me.session) go(me.session.role); }).catch(() => {});
+
+    $("#login").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = $("#submit");
+      const error = $("#error");
+      error.hidden = true;
+      button.disabled = true;
+      button.classList.add("is-busy");
+      try {
+        const result = await api("auth/login", { method: "POST", body: { email: $("#email").value, password: $("#password").value } });
+        go(result.role);
+      } catch (err) {
+        error.textContent = err.message;
+        error.hidden = false;
+        button.disabled = false;
+        button.classList.remove("is-busy");
+      }
+    });
+  </script>
+</body>
+</html>

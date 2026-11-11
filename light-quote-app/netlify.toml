@@ -1,0 +1,43 @@
+[build]
+  publish = "public"
+  command = "echo 'static site - no build step'"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[dev]
+  port = 8888
+  autoLaunch = false
+
+# Pretty URLs for the three faces
+[[redirects]]
+  from = "/q/*"
+  to = "/quiz.html"
+  status = 200
+
+[[redirects]]
+  from = "/r/*"
+  to = "/result.html"
+  status = 200
+
+[[redirects]]
+  from = "/app"
+  to = "/app.html"
+  status = 200
+
+[[redirects]]
+  from = "/admin"
+  to = "/admin.html"
+  status = 200
+
+[[redirects]]
+  from = "/login"
+  to = "/login.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

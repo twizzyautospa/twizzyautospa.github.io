@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Get your holiday lighting quote</title>
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="customer">
+  <header class="brand-bar">
+    <div class="brand-bar-inner">
+      <div class="brand-id" id="brand-id"></div>
+      <a class="brand-phone" id="brand-phone" hidden></a>
+    </div>
+  </header>
+  <main class="wrap">
+    <div class="progress" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="progress-bar" style="width:0"></div></div>
+    <form id="quiz" novalidate>
+      <div id="step" aria-live="polite"></div>
+      <p class="error-text" id="step-error" role="alert" hidden></p>
+      <div class="step-nav" id="step-nav">
+        <button type="button" class="btn btn-secondary btn-lg" id="back" hidden>Back</button>
+        <button type="submit" class="btn btn-lg" id="next">Continue</button>
+      </div>
+    </form>
+  </main>
+  <script src="/vendor/leaflet/leaflet.js"></script>
+  <script type="module" src="/js/quiz.js"></script>
+</body>
+</html>
