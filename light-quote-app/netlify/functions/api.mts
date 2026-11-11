@@ -59,7 +59,7 @@ interface Ctx {
   origin: string;
 }
 
-const DEFAULT_PLATFORM = { name: "Lumaquote" };
+const DEFAULT_PLATFORM = { name: "Lumiquote" };
 const MAX_PHOTOS = 3;
 const LEADS_PER_IP_PER_HOUR = 6;
 

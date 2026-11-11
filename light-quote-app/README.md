@@ -4,7 +4,7 @@ White-label quoting and booking software for Christmas light installers.
 
 A homeowner answers a short quiz, adds their address and a photo, and sees their own home lit up in three colours with a price range. The installer gets the lead with photos and a satellite measuring tool, sends a firm quote, and the homeowner accepts and picks an install date.
 
-"Lumaquote" is a placeholder platform name. Change it on the admin Overview page.
+The platform is called Lumiquote. The name can be changed on the admin Overview page.
 
 ## The three faces
 
