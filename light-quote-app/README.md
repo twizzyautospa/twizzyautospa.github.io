@@ -87,7 +87,7 @@ curl -X POST https://YOUR-SITE/api/inbound/leads \
 
 ## Not built yet
 
-- Taking the deposit online (Stripe). The quote shows the deposit amount; the installer collects it.
+- Online payment. Quotes show the total only; there is no deposit step.
 - Automatic text messages. Installers send the quote link with one tap from their own phone or email.
 - Custom domains or subdomains per installer. Links are `/q/<name>` on the platform's domain.
 - Installer self-signup and billing. The owner creates installer accounts in `/admin`.

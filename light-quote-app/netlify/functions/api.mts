@@ -421,8 +421,7 @@ async function installerRoutes(ctx: Ctx): Promise<Response> {
       const items = cleanItems(body.items);
       if (!items.length) fail(400, "Add at least one line to the quote");
       const dates = (Array.isArray(body.dates) ? body.dates : []).filter(isDate).slice(0, 12).sort();
-      const depositPct = num(body.depositPct, 0, 100, installer.settings.depositPct);
-      const quote = buildQuote(items, depositPct, [...new Set<string>(dates)], str(body.note, 1500));
+      const quote = buildQuote(items, [...new Set<string>(dates)], str(body.note, 1500));
       if (quote.total <= 0) fail(400, "The quote total must be more than zero");
       await sql()`
         UPDATE leads SET quote = ${j(quote)}::jsonb, status = 'quoted', booking = NULL, updated_at = now() WHERE id = ${lead.id}`;

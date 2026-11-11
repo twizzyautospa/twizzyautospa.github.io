@@ -60,12 +60,13 @@ test("webhook URLs must be public https", () => {
   }
 });
 
-test("quote totals and deposit", () => {
+test("quote totals", () => {
   const items = cleanItems([{ label: "Roofline", qty: 120, unit: "ft", unitPrice: 7.2 }, { label: "", qty: 3, unitPrice: 5 }, { label: "Discount", qty: 1, unitPrice: -64 }]);
   assert.equal(items.length, 2);
-  const q = buildQuote(items, 25, ["2026-11-27"], "note");
+  const q = buildQuote(items, ["2026-11-27"], "note");
   assert.equal(q.total, 800);
-  assert.equal(q.deposit, 200);
+  assert.equal(q.deposit, undefined);
+  assert.equal(normalizeSettings({ depositPct: 25 }).depositPct, undefined);
 });
 
 test("measurement length is computed on the server", () => {

@@ -279,7 +279,7 @@ export async function createLead(installer: Installer, input: NewLead, origin: s
     const subtotal = items.reduce((sum, item) => sum + item.qty * item.unitPrice, 0);
     const minimum = installer.settings.pricing.minimumJob;
     if (subtotal < minimum) items.push({ label: "Minimum service charge", qty: 1, unit: "", unitPrice: Math.round((minimum - subtotal) * 100) / 100 });
-    quote = buildQuote(items, installer.settings.depositPct, [], "", true);
+    quote = buildQuote(items, [], "", true);
     status = "quoted";
   }
   let booking: Lead["booking"] = null;

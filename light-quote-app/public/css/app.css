@@ -72,6 +72,12 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--brand); }
 .btn-sm { min-height: 36px; padding: 0 12px; font-size: 0.875rem; border-radius: 8px; }
 .btn-lg { min-height: 54px; font-size: 1.05rem; padding: 0 26px; border-radius: 12px; }
 .btn-block { width: 100%; }
+.btn-xl { min-height: 64px; font-size: 1.2rem; padding: 0 28px; border-radius: 14px; }
+.btn-text-it { background: #128a4a; color: #fff; }
+.send-panel { background: #eaf7ef; border: 2px solid #128a4a; border-radius: var(--radius); padding: 18px; display: grid; gap: 14px; }
+.send-panel h2 { color: #0c5c31; }
+.send-panel p { color: #24523a; margin-top: 2px; }
+.send-panel-more { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
 :focus-visible { outline: 3px solid color-mix(in srgb, var(--brand) 55%, white); outline-offset: 2px; }
 
 label.field { display: block; }
@@ -165,7 +171,7 @@ h1[tabindex="-1"]:focus { outline: none; }
 .map-box { height: 260px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: #dfe3ea; }
 
 .dropzone {
-  display: grid; place-items: center; gap: 8px; text-align: center; padding: 30px 16px; cursor: pointer;
+  display: grid; place-items: center; gap: 6px; text-align: center; padding: 20px 16px; cursor: pointer;
   border: 2px dashed #c3c9d4; border-radius: var(--radius); background: var(--surface);
 }
 .dropzone:hover { border-color: var(--brand); }
@@ -175,6 +181,8 @@ h1[tabindex="-1"]:focus { outline: none; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; }
 .thumb button { position: absolute; top: 5px; right: 5px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(15, 20, 30, 0.75); color: #fff; cursor: pointer; font-size: 1rem; }
 .tips { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 0.9rem; }
+.street-help h2 { font-size: 1.05rem; }
+.street-help .tips li + li { margin-top: 3px; }
 
 /* result page */
 .viewer { background: var(--night); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }

@@ -37,7 +37,6 @@ export interface InstallerSettings {
     treeLarge: number;
     shrub: number;
   };
-  depositPct: number;
   aiPreviews: boolean;
   dailyLeadCap: number;
   webhookUrl: string;
@@ -59,7 +58,6 @@ export const DEFAULT_SETTINGS: InstallerSettings = {
     treeLarge: 300,
     shrub: 20,
   },
-  depositPct: 25,
   aiPreviews: true,
   dailyLeadCap: 40,
   webhookUrl: "",
@@ -135,7 +133,6 @@ export function normalizeSettings(input: any, base: InstallerSettings = DEFAULT_
       treeLarge: num(p.treeLarge, 0, 10_000, b.treeLarge),
       shrub: num(p.shrub, 0, 10_000, b.shrub),
     },
-    depositPct: num(src.depositPct, 0, 100, base.depositPct),
     aiPreviews: typeof src.aiPreviews === "boolean" ? src.aiPreviews : base.aiPreviews,
     dailyLeadCap: int(src.dailyLeadCap, 1, 1000, base.dailyLeadCap),
     webhookUrl: src.webhookUrl === undefined ? base.webhookUrl : cleanWebhookUrl(src.webhookUrl),
@@ -224,8 +221,6 @@ export function computeEstimate(s: Selections, settings: InstallerSettings): Est
 export interface Quote {
   items: QuoteItem[];
   total: number;
-  depositPct: number;
-  deposit: number;
   dates: string[];
   note: string;
   sentAt: string;
@@ -245,13 +240,11 @@ export function cleanItems(input: unknown): QuoteItem[] {
     .filter((item) => item.label && item.qty > 0);
 }
 
-export function buildQuote(items: QuoteItem[], depositPct: number, dates: string[], note: string, auto = false): Quote {
+export function buildQuote(items: QuoteItem[], dates: string[], note: string, auto = false): Quote {
   const total = Math.max(0, itemsTotal(items));
   return {
     items,
     total,
-    depositPct,
-    deposit: money((total * depositPct) / 100),
     dates,
     note,
     sentAt: new Date().toISOString(),

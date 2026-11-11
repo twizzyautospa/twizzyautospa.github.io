@@ -130,8 +130,8 @@ async function showLead(id) {
   }
   sent = null;
   draft = lead.quote
-    ? { items: lead.quote.items.map((i) => ({ ...i })), depositPct: lead.quote.depositPct, dates: [...lead.quote.dates], note: lead.quote.note }
-    : { items: lead.suggestedItems.map((i) => ({ ...i })), depositPct: account.settings.depositPct, dates: [], note: "" };
+    ? { items: lead.quote.items.map((i) => ({ ...i })), dates: [...lead.quote.dates], note: lead.quote.note }
+    : { items: lead.suggestedItems.map((i) => ({ ...i })), dates: [], note: "" };
   renderLead();
 }
 
@@ -150,6 +150,7 @@ function renderLead() {
         <p class="muted">${lead.address || "No address given"}</p>
       </div>
       <div class="row">
+        ${sendLinks()?.sms && !lead.booking ? html`<a class="btn btn-text-it" href="${sendLinks().sms}">Text quote</a>` : ""}
         ${pill(lead.status)}
         <select id="status" aria-label="Lead status" style="width:auto">
           ${Object.entries(STATUS_LABELS).map(([key, label]) => html`<option value="${key}" ${raw(key === lead.status ? "selected" : "")}>${label}</option>`)}
@@ -168,7 +169,6 @@ function renderLead() {
           </dl>
           ${lead.address ? html`
             <div class="row" style="margin-top:14px">
-              <a class="btn btn-sm btn-secondary" target="_blank" rel="noopener" href="https://earth.google.com/web/search/${q}">Google Earth</a>
               <a class="btn btn-sm btn-secondary" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${q}">Google Maps</a>
               ${hasSpot ? html`<a class="btn btn-sm btn-secondary" target="_blank" rel="noopener" href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lead.lat},${lead.lng}">Street View</a>` : ""}
             </div>` : ""}
@@ -234,6 +234,7 @@ function renderLead() {
           </div>
         </section>
 
+        ${sendPanel()}
         <section class="card stack" id="quote-card"></section>
       </div>
     </div>`);
@@ -249,15 +250,12 @@ const draftTotal = () => draft.items.reduce((sum, item) => sum + lineTotal(item)
 function renderQuote() {
   const card = $("#quote-card");
   if (!card) return;
-  const first = lead.customerName.split(/\s+/)[0] || "there";
-  const link = sent || (lead.quote ? `${location.origin}${lead.customerLink}` : "");
-  const message = `Hi ${first}, your holiday lighting quote from ${account.companyName} is ready: ${link}`;
   const total = draftTotal();
 
   setHtml(card, html`
     <div class="row-between">
       <div class="section-title" style="margin:0">${lead.quote ? "Quote" : "Build the quote"}</div>
-      ${lead.quote ? html`<span class="small muted">Sent ${dateTime(lead.quote.sentAt)}${lead.quote.auto ? " (instant price)" : ""}</span>` : ""}
+      ${lead.quote ? html`<span class="small muted">Saved ${dateTime(lead.quote.sentAt)}${lead.quote.auto ? " (instant price)" : ""}</span>` : ""}
     </div>
     ${lead.booking ? html`<p class="notice notice-good"><strong>Booked for ${dateOnly(lead.booking.date)}.</strong> Accepted ${dateTime(lead.booking.acceptedAt)}.</p>` : ""}
     <table class="items">
@@ -279,8 +277,7 @@ function renderQuote() {
       <button type="button" class="btn btn-sm btn-ghost" id="reset-items">Reset to suggested</button>
     </div>
     <div class="total-row"><span>Total</span><strong id="quote-total">${money(total, true)}</strong></div>
-    <div class="form-grid">
-      <label class="field"><span>Deposit %</span><input type="number" id="deposit" min="0" max="100" step="1" value="${draft.depositPct}"></label>
+    <div>
       <label class="field"><span>Offer an install date</span>
         <span class="copy-row"><input type="date" id="date-input" min="${new Date().toISOString().slice(0, 10)}"><button type="button" class="btn btn-secondary" id="add-date">Add</button></span>
       </label>
@@ -292,17 +289,44 @@ function renderQuote() {
       <p class="hint">${draft.dates.length ? "The customer picks one of these." : "No dates offered: the customer suggests a date when they accept."}</p>
     </div>
     <label class="field"><span>Note to the customer</span><textarea id="quote-note" placeholder="Optional. What's included, lease terms, takedown date…">${draft.note}</textarea></label>
-    <button type="button" class="btn btn-lg" id="send-quote">${lead.quote ? "Update and resend quote" : "Send quote"}</button>
-    ${link ? html`
-      <div class="stack" style="--gap:10px">
-        <p class="notice notice-good">${sent ? html`<strong>Quote saved.</strong> Now send the customer their link:` : "Customer link:"}</p>
-        <div class="copy-row"><input type="text" readonly value="${link}" aria-label="Customer quote link"><button type="button" class="btn btn-secondary" id="copy-customer">Copy</button></div>
-        <div class="row">
-          ${lead.customerPhone ? html`<a class="btn btn-sm btn-secondary" href="sms:${lead.customerPhone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(message)}">Text it</a>` : ""}
-          ${lead.customerEmail ? html`<a class="btn btn-sm btn-secondary" href="mailto:${lead.customerEmail}?subject=${encodeURIComponent(`Your holiday lighting quote from ${account.companyName}`)}&body=${encodeURIComponent(message)}">Email it</a>` : ""}
-          <a class="btn btn-sm btn-ghost" href="${link}" target="_blank" rel="noopener">Preview what they see</a>
-        </div>
-      </div>` : ""}`);
+    <button type="button" class="btn btn-lg" id="send-quote">${lead.quote ? "Save changes to quote" : "Save quote"}</button>
+    ${lead.quote ? "" : html`<p class="hint">Saving creates the customer's quote page. You then text them the link.</p>`}`);
+}
+
+/** Links for getting the quote to the customer. Empty until a quote exists. */
+function sendLinks() {
+  if (!lead?.quote) return null;
+  const first = lead.customerName.split(/\s+/)[0] || "there";
+  const link = sent || `${location.origin}${lead.customerLink}`;
+  const message = `Hi ${first}, your holiday lighting quote from ${account.companyName} is ready: ${link}`;
+  const phone = lead.customerPhone.replace(/[^\d+]/g, "");
+  return {
+    first,
+    link,
+    sms: phone ? `sms:${phone}?&body=${encodeURIComponent(message)}` : "",
+    mail: lead.customerEmail
+      ? `mailto:${lead.customerEmail}?subject=${encodeURIComponent(`Your holiday lighting quote from ${account.companyName}`)}&body=${encodeURIComponent(message)}`
+      : "",
+  };
+}
+
+/** The big "text it" panel shown above the quote as soon as a quote is saved. */
+function sendPanel() {
+  const links = sendLinks();
+  if (!links || lead.booking) return "";
+  return html`
+    <section class="send-panel" id="send-panel">
+      <div>
+        <h2>${sent ? "Quote saved. Now send it." : `Send ${links.first} their quote`}</h2>
+        <p class="small">${money(lead.quote.total, true)} · ${lead.customerPhone || lead.customerEmail || "no contact details"}</p>
+      </div>
+      ${links.sms ? html`<a class="btn btn-xl btn-block btn-text-it" href="${links.sms}">Text it to ${links.first}</a>` : ""}
+      <div class="send-panel-more">
+        ${links.mail ? html`<a class="btn btn-secondary" href="${links.mail}">Email it</a>` : ""}
+        <button type="button" class="btn btn-secondary" id="copy-customer">Copy link</button>
+        <a class="btn btn-secondary" href="${links.link}" target="_blank" rel="noopener">See their page</a>
+      </div>
+    </section>`;
 }
 
 function readDraftInputs() {
@@ -314,8 +338,6 @@ function readDraftInputs() {
       item[field] = field === "qty" || field === "unitPrice" ? Number(input.value) || 0 : input.value;
     });
   });
-  const deposit = $("#deposit");
-  if (deposit) draft.depositPct = Math.min(100, Math.max(0, Number(deposit.value) || 0));
   const note = $("#quote-note");
   if (note) draft.note = note.value;
 }
@@ -353,7 +375,7 @@ page.addEventListener("click", async (event) => {
       sent = result.customerUrl;
       draft.items = lead.quote.items.map((i) => ({ ...i }));
       renderLead();
-      $("#quote-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      $("#send-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   }
 
@@ -456,7 +478,7 @@ async function initMap() {
     holder.hidden = true;
     const message = $("#map-message");
     message.hidden = false;
-    message.textContent = "We could not place this address on the map. Use the Google Earth link to measure, then type the length into the quote.";
+    message.textContent = "We could not place this address on the map. Use the Google Maps link to measure, then type the length into the quote.";
     return;
   }
   const map = L.map(holder, { doubleClickZoom: false }).setView(spot, 20);
@@ -515,7 +537,6 @@ function showSettings() {
           ${mode("hidden", "No price", "They see the preview only. You send the quote.")}
         </div>
         <div class="form-grid">
-          ${number("s-deposit", "Deposit %", s.depositPct, "1")}
           ${number("s-range", "Range spread ± %", p.rangePct, "1", "Used for the price range.")}
           ${number("s-min", "Minimum job $", p.minimumJob)}
         </div>
@@ -648,7 +669,6 @@ page.addEventListener("click", async (event) => {
           settings: {
             brand,
             priceMode: $("input[name=priceMode]:checked")?.value,
-            depositPct: numberOf("s-deposit"),
             aiPreviews: $("#s-ai").checked,
             dailyLeadCap: numberOf("s-cap"),
             notifyEmail: value("s-notify"),

@@ -135,10 +135,20 @@ const RENDER = {
     <div class="thumbs" id="thumbs" style="margin-top:12px">
       ${state.photos.map((src, i) => html`<div class="thumb"><img src="${src}" alt="Your photo ${i + 1}"><button type="button" data-remove="${i}" aria-label="Remove photo ${i + 1}">&times;</button></div>`)}
     </div>
+    ${state.photos.length ? "" : html`
+    <section class="card card-flat stack street-help" style="margin-top:14px;--gap:10px">
+      <h2>Not at home right now?</h2>
+      <ol class="tips">
+        <li>Open Street View of your address.</li>
+        <li>Turn it to face your house and take a screenshot.</li>
+        <li>Come back to this page and add the screenshot above.</li>
+      </ol>
+      <a class="btn btn-secondary btn-block" id="street-view" target="_blank" rel="noopener" href="${streetViewUrl()}">Open Street View of my home</a>
+      <p class="tiny muted">This page keeps your answers while you are away. No photo at all? Continue without one and your installer will follow up.</p>
+    </section>`}
     <ul class="tips" style="margin-top:14px">
       <li>Fit the whole front of the house in the frame.</li>
       <li>Daylight works better than night.</li>
-      <li>No photo handy? Continue without one and your installer will follow up.</li>
     </ul>`,
 
   contact: () => html`
@@ -153,6 +163,41 @@ const RENDER = {
     </div>`,
 };
 
+/** Google Street View at the chosen spot, or a Maps search when we only have the typed address. */
+function streetViewUrl() {
+  if (state.lat !== null && state.lng !== null) {
+    return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${state.lat},${state.lng}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(state.address)}`;
+}
+
+/* ---------- keep answers if the customer leaves and comes back ---------- */
+const STORE_KEY = `lq-quiz-${slug}`;
+
+function remember() {
+  try {
+    const { index, selections, address, lat, lng, contact } = state;
+    sessionStorage.setItem(STORE_KEY, JSON.stringify({ index, selections, address, lat, lng, contact }));
+  } catch {
+    /* Storage can be unavailable in private windows. The quiz still works. */
+  }
+}
+
+function recall() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(STORE_KEY) || "null");
+    if (!saved || typeof saved !== "object" || !saved.selections) return;
+    Object.assign(state.selections, saved.selections);
+    Object.assign(state.contact, saved.contact || {});
+    state.address = typeof saved.address === "string" ? saved.address : "";
+    state.lat = typeof saved.lat === "number" ? saved.lat : null;
+    state.lng = typeof saved.lng === "number" ? saved.lng : null;
+    state.index = Number.isInteger(saved.index) ? saved.index : 0;
+  } catch {
+    /* Ignore unreadable saved answers and start fresh. */
+  }
+}
+
 /* ---------- rendering and navigation ---------- */
 function show() {
   const list = steps();
@@ -166,6 +211,7 @@ function show() {
   const last = state.index === list.length - 1;
   $("#next").textContent = last ? (state.photos.length ? "See my home lit up" : "Get my quote") : key === "photo" && !state.photos.length ? "Skip for now" : "Continue";
   setError("");
+  remember();
   if (key === "address") initAddress();
   window.scrollTo({ top: 0 });
   $("#step h1")?.setAttribute("tabindex", "-1");
@@ -369,6 +415,7 @@ async function submit() {
         website: $("#c-website").value,
       },
     });
+    try { sessionStorage.removeItem(STORE_KEY); } catch { /* nothing to clear */ }
     location.href = `/r/${result.token}`;
   } catch (error) {
     setError(error.message);
@@ -394,6 +441,7 @@ async function start() {
       phone.href = `tel:${installer.phone.replace(/[^\d+]/g, "")}`;
       phone.textContent = installer.phone;
     }
+    recall();
     show();
   } catch (error) {
     $("#step-nav").hidden = true;

@@ -111,7 +111,6 @@ function priceCard() {
         <p class="notice notice-good"><strong>You're booked.</strong> ${company} will be in touch to confirm the details.</p>
         ${lead.booking ? html`<div><div class="section-title">Install date</div><div class="price" style="font-size:1.4rem">${dateOnly(lead.booking.date)}</div></div>` : ""}
         ${lead.quote ? quoteTable(lead.quote) : ""}
-        ${lead.quote && lead.quote.deposit > 0 ? html`<p class="small muted">Deposit of ${money(lead.quote.deposit, true)} due to secure your date. ${company} will send payment details.</p>` : ""}
       </section>`;
   }
 
@@ -138,7 +137,6 @@ function priceCard() {
               ? html`<div class="date-choices" role="radiogroup" aria-labelledby="date-label">${q.dates.map((d, i) => html`<label><input type="radio" name="date" value="${d}" ${raw(i === 0 ? "checked" : "")}> ${dateOnly(d)}</label>`)}</div>`
               : html`<input type="date" name="date" min="${tomorrow}" required aria-labelledby="date-label">`}
           </div>
-          ${q.deposit > 0 ? html`<p class="small muted">A ${q.depositPct}% deposit (${money(q.deposit, true)}) secures your date. ${company} will send payment details after you book.</p>` : ""}
           <p class="error-text" id="accept-error" role="alert" hidden></p>
           <button type="submit" class="btn btn-lg btn-block">Accept and book</button>
           <button type="button" class="btn btn-ghost btn-block" id="decline">No thanks</button>
