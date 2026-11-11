@@ -44,6 +44,22 @@ The portal opens on **Home**, with tabs **Home | Leads | Calendar | Invoices**.
   - Storage: every save is a new version key `inv/<pipelineId>/<invoiceId>/<version>` (and settings at
     `invcfg/<pipelineId>/<version>`), so a sent link always shows exactly that version.
 
+## Quotes with customer approval
+
+The **Billing** tab has **Quotes | Invoices**. Quotes use the same editor, numbering (`quotePrefix`, e.g. TB-Q1001),
+branding and PDF as invoices, plus a *Valid until* date (default `quoteDays`, 30).
+
+- Create from a lead (*Create quote* under the stage buttons), from an estimate/site-visit booking, or from scratch.
+- *Text it / Email it / Share / Copy link* sends a link to **/q?t=…**, a branded customer page (no login; the link is
+  HMAC-signed) showing the quote with **Approve** (type full name + tick "I accept") and **Decline** (optional reason).
+  The first time the customer opens it, the quote shows as *Viewed* in the portal.
+- Sending a quote moves the lead forward to the **Quoted** stage.
+- **On approval** (by the customer, or *Mark as approved* in the portal): the lead moves forward to **Closed** with
+  the pre-tax quote total as its job value, the contact is tagged `quote approved` with a note, and a matching
+  **invoice is created as a draft**. Home shows "<customer> approved quote … Schedule the job" until it is booked.
+- **On decline**: tagged `quote declined` with the reason in a note. Expired quotes can't be approved.
+- Leads are only ever moved forward (never back out of Closed / Job Completed).
+
 ## Meta lead marking
 
 Every lead has a **Did this lead come from Meta?** choice (From Meta / Not from Meta) in its panel, and lead

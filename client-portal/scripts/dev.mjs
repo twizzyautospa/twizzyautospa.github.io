@@ -24,7 +24,8 @@ createServer(async (req, res) => {
     res.writeHead(out.statusCode, out.headers);
     return res.end(out.isBase64Encoded ? Buffer.from(out.body, 'base64') : out.body);
   }
-  const rel = normalize(url.pathname === '/' ? '/index.html' : url.pathname).replace(/^(\.\.[/\\])+/, '');
+  const page = url.pathname === '/' ? '/index.html' : url.pathname === '/q' ? '/quote.html' : url.pathname;
+  const rel = normalize(page).replace(/^(\.\.[/\\])+/, '');
   try {
     const data = await readFile(join(ROOT, 'public', rel));
     res.writeHead(200, { 'Content-Type': TYPES[extname(rel)] || 'application/octet-stream' });

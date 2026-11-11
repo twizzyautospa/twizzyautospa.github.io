@@ -1,1 +1,2 @@
 /api/*  /.netlify/functions/api/:splat  200
+/q  /quote.html  200

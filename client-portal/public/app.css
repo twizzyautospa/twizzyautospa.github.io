@@ -662,4 +662,18 @@ html.client-theme .toast svg{color:#fff}
 .inv-totals .grand{border-top:1px solid var(--rule);padding-top:6px;margin-top:2px}
 .inv-totals .grand b{font-size:18px;color:var(--accent-text)}
 
+/* ---------- quotes ---------- */
+.bill-mode button{padding:9px 16px;font-size:14px}
+.doc-info{background:var(--accent-soft);border:1px solid var(--accent-dim);border-radius:10px;padding:10px 12px;font-size:14px;margin:0 0 10px}
+.att.ok{border-left-color:#1d8a4e}
+.att.ok > svg:first-child{width:18px;height:18px;margin:0;color:#1d8a4e;flex:0 0 auto}
+.att .nm{color:var(--white);font-size:14px;font-family:inherit}
+.lead-doc{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:var(--panel-2);border:1px solid var(--rule);border-radius:10px;padding:10px 12px;cursor:pointer;font-size:14px}
+.lead-doc svg{width:16px;height:16px;color:var(--accent-text);flex:0 0 auto}
+.lead-doc span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lead-doc .pill{flex:0 0 auto;vertical-align:0}
+.quote-btn{width:100%}
+.quote-btn svg{width:16px;height:16px}
+.inv-acts2 a.btn{text-decoration:none}
+
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

@@ -17,7 +17,7 @@
     view: 'leads',
     bk: { pid: null, months: new Set(), map: new Map() },   // portal calendar bookings by id
     cal: { month: null, day: null },
-    inv: { pid: null, settings: null, map: new Map(), loaded: false },
+    inv: { pid: null, settings: null, map: new Map(), quotes: new Map(), loaded: false },
   };
 
   // Closing a panel with its X/scrim steps browser history back; ignore the popstate that causes.
@@ -196,7 +196,7 @@
     closeBooker();
     closeInvPanel();
     state.bk = { pid: null, months: new Set(), map: new Map() };
-    state.inv = { pid: null, settings: null, map: new Map(), loaded: false };
+    state.inv = { pid: null, settings: null, map: new Map(), quotes: new Map(), loaded: false };
     $('#clientsBtn').hidden = true;
     $('#app').hidden = true;
     $('#login').hidden = false;
@@ -297,7 +297,7 @@
     state.board = null;
     state.stage = null;
     state.bk = { pid: null, months: new Set(), map: new Map() };
-    state.inv = { pid: null, settings: null, map: new Map(), loaded: false };
+    state.inv = { pid: null, settings: null, map: new Map(), quotes: new Map(), loaded: false };
     $('#board').innerHTML = '';
     $('#chips').innerHTML = '';
     $('#summary').innerHTML = '';
@@ -667,7 +667,9 @@
     if (!box || !o || !o.id) return;
     const list = bookingsFor(o.id);
     box.innerHTML = list.map((b) => bkCard(b, true)).join('')
-      + `<button class="btn sm book-btn" type="button" data-book="${esc(o.id)}">${icon('cal')}${list.length ? 'Book another appointment' : 'Book appointment'}</button>`;
+      + `<button class="btn sm book-btn" type="button" data-book="${esc(o.id)}">${icon('cal')}${list.length ? 'Book another appointment' : 'Book appointment'}</button>`
+      + quotesForLead(o.id).map((v) => `<button type="button" class="lead-doc" data-qopen="${esc(v.id)}">${icon('doc')}<span>Quote ${esc(v.number)} · ${esc(money2f(v.totals.total))}</span>${statusPill(v)}</button>`).join('')
+      + `<button class="btn sm ghost quote-btn" type="button" data-quote="${esc(o.id)}">${icon('doc')}Create quote</button>`;
   }
 
   function subLine(o, stage) {
@@ -691,6 +693,10 @@
     if (why) { removeReason = why.dataset.removeWhy; $('#removeSec').innerHTML = removeBlock(true); return; }
     const mt = e.target.closest('[data-meta]');
     if (mt && state.openId) { setMeta(state.openId, mt.dataset.meta); return; }
+    const qb = e.target.closest('[data-quote]');
+    if (qb) { openInvoiceEditor({ kind: 'quote', lead: findOpp(qb.dataset.quote) }); return; }
+    const qo = e.target.closest('[data-qopen]');
+    if (qo) { openInvoiceView(qo.dataset.qopen, 'quote'); return; }
     const book = e.target.closest('[data-book]');
     if (book) { openBookingForm({ oppId: book.dataset.book, lockLead: true }); return; }
     const card = e.target.closest('[data-bk]');
@@ -1318,6 +1324,7 @@
       ${new Date(b.end) < new Date() ? '' : `<div class="sec"><h3>${booker.fresh ? 'Booked! Add it to your phone calendar' : 'Add to my calendar'}</h3>${addCal}</div>`}
       <div class="sec bk-actions">
         ${(() => {
+          if (!isJobBooking(b)) return `<button class="btn ghost" type="button" data-bk-act="quote">${icon('doc')}Create quote</button>`;
           const iv = invoiceForBooking(b.id);
           return iv
             ? `<button class="btn ghost" type="button" data-bk-act="invoice-open">${icon('doc')}Invoice ${esc(iv.number)} · ${iv.status === 'paid' ? 'Paid' : 'Unpaid'}</button>`
@@ -1352,7 +1359,8 @@
     const b = state.bk.map.get(booker.id);
     if (!b) return;
     if (act.dataset.bkAct === 'invoice') { openInvoiceEditor({ booking: b }); return; }
-    if (act.dataset.bkAct === 'invoice-open') { const iv = invoiceForBooking(b.id); if (iv) openInvoiceView(iv.id); return; }
+    if (act.dataset.bkAct === 'quote') { openInvoiceEditor({ kind: 'quote', booking: b }); return; }
+    if (act.dataset.bkAct === 'invoice-open') { const iv = invoiceForBooking(b.id); if (iv) openInvoiceView(iv.id, 'invoice'); return; }
     if (act.dataset.bkAct === 'edit') {
       booker.mode = 'form';
       openBookingForm({ edit: b });
@@ -1405,7 +1413,7 @@
     }
   });
 
-  /* ---------------- invoices ---------------- */
+  /* ---------------- billing: quotes & invoices ---------------- */
 
   const money2f = (n) => `$${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -1413,10 +1421,16 @@
   const prettyYmd = (ymd) => (ymd ? fromDayKey(ymd).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '');
   const numIn = (v) => Number(String(v == null ? '' : v).replace(/[^0-9.-]/g, '')) || 0;
   const absUrl = (path) => new URL(path, window.location.origin).href;
+  const WORD = { invoice: 'Invoice', quote: 'Quote' };
 
-  const invList = () => [...state.inv.map.values()].sort((a, b) => (b.seq || 0) - (a.seq || 0));
+  const docMap = (kind) => (kind === 'quote' ? state.inv.quotes : state.inv.map);
+  const docList = (kind) => [...docMap(kind).values()].sort((a, b) => (b.seq || 0) - (a.seq || 0));
+  const invList = () => docList('invoice');
+  const quoteList = () => docList('quote');
   const isOverdue = (v) => v.status !== 'paid' && v.dueDate && v.dueDate < dayKey(new Date());
+  const isExpired = (v) => v.kind === 'quote' && (v.status === 'sent' || v.status === 'draft') && v.dueDate && v.dueDate < dayKey(new Date());
   const invoiceForBooking = (id) => invList().find((v) => v.bookingId === id);
+  const quotesForLead = (oppId) => quoteList().filter((v) => v.oppId === oppId);
 
   function totalsOf(d) {
     const subtotal = r2(d.lines.reduce((t, l) => t + r2(numIn(l.qty) * numIn(l.price)), 0));
@@ -1430,10 +1444,15 @@
   function invPending(pid) {
     try { return JSON.parse(localStorage.getItem(invKey(pid)) || '[]').filter((x) => Date.now() - x.at < 10 * 60e3); } catch { return []; }
   }
-  function rememberInvoice(pid, id, doc) {
-    const list = invPending(pid).filter((x) => x.id !== id);
-    list.push({ id, doc, at: Date.now() });
+  function rememberDoc(pid, kind, id, doc) {
+    const list = invPending(pid).filter((x) => !(x.id === id && (x.kind || 'invoice') === kind));
+    list.push({ id, kind, doc, at: Date.now() });
     try { localStorage.setItem(invKey(pid), JSON.stringify(list)); } catch { /* private mode */ }
+  }
+  function storeDoc(doc) {
+    const kind = doc.kind || 'invoice';
+    docMap(kind).set(doc.id, doc);
+    rememberDoc(state.board.pipeline.id, kind, doc.id, doc);
   }
 
   async function loadInvoices() {
@@ -1442,14 +1461,19 @@
     try {
       const r = await api(`invoices${state.me.admin ? `?pipeline=${encodeURIComponent(pid)}` : ''}`);
       if (!state.board || state.board.pipeline.id !== pid) return;
-      state.inv = { pid, settings: r.settings, map: new Map(r.invoices.map((v) => [v.id, v])), loaded: true };
+      state.inv = {
+        pid, settings: r.settings, loaded: true,
+        map: new Map(r.invoices.map((v) => [v.id, { ...v, kind: 'invoice' }])),
+        quotes: new Map((r.quotes || []).map((v) => [v.id, { ...v, kind: 'quote' }])),
+      };
     } catch (ex) {
-      if (state.inv.pid !== pid) state.inv = { pid, settings: null, map: new Map(), loaded: false, error: ex.message };
+      if (state.inv.pid !== pid) state.inv = { pid, settings: null, map: new Map(), quotes: new Map(), loaded: false, error: ex.message };
     }
     for (const x of invPending(pid)) {
-      const cur = state.inv.map.get(x.id);
-      if (!x.doc) state.inv.map.delete(x.id);
-      else if (!cur || String(x.doc.updatedAt) >= String(cur.updatedAt)) state.inv.map.set(x.id, x.doc);
+      const m = docMap(x.kind || 'invoice');
+      const cur = m.get(x.id);
+      if (!x.doc) m.delete(x.id);
+      else if (!cur || String(x.doc.updatedAt) >= String(cur.updatedAt)) m.set(x.id, x.doc);
     }
     afterInvoicesChange();
   }
@@ -1462,62 +1486,99 @@
     if (state.view === 'invoices') renderInvoices();
     if (state.view === 'home') renderHome();
     if (booker.open && booker.mode === 'view') renderBookingView();
+    if (state.openId) renderSheetBookings(findOpp(state.openId));
   }
 
-  const statusPill = (v) => {
-    const k = v.status === 'paid' ? 'paid' : isOverdue(v) ? 'overdue' : v.status;
-    const label = { paid: 'Paid', overdue: 'Overdue', sent: 'Sent', draft: 'Draft' }[k];
+  function statusPill(v) {
+    let k = v.status;
+    let label;
+    if (v.kind === 'quote') {
+      if (isExpired(v)) { k = 'overdue'; label = 'Expired'; }
+      else label = { draft: 'Draft', sent: v.viewedAt ? 'Viewed' : 'Sent', approved: 'Approved', declined: 'Declined' }[v.status];
+      if (v.status === 'approved') k = 'paid';
+      if (v.status === 'declined') k = 'overdue';
+    } else {
+      if (isOverdue(v)) k = 'overdue';
+      label = { paid: 'Paid', overdue: 'Overdue', sent: 'Sent', draft: 'Draft' }[k];
+    }
     return `<span class="pill ${k}">${label}</span>`;
-  };
+  }
 
   function invRow(v) {
-    return `<button type="button" class="inv-row" data-inv="${esc(v.id)}">
+    return `<button type="button" class="inv-row" data-inv="${esc(v.id)}" data-kind="${esc(v.kind || 'invoice')}">
       <span class="inv-main"><b>${esc(v.customer.name)}</b><span>${esc(v.number)} · ${esc(prettyYmd(v.issueDate))}</span></span>
       <span class="inv-amt"><b>${esc(money2f(v.totals.total))}</b>${statusPill(v)}</span></button>`;
   }
 
+  let billMode = store.get('lt_billmode') === 'quotes' ? 'quotes' : 'invoices';
   let invFilter = 'all';
   function renderInvoices() {
     const box = $('#invView');
-    if (!state.inv.loaded && !state.inv.error) { box.innerHTML = '<div class="empty">Loading invoices…</div>'; return; }
+    if (!state.inv.loaded && !state.inv.error) { box.innerHTML = '<div class="empty">Loading…</div>'; return; }
     if (state.inv.error && !state.inv.loaded) { box.innerHTML = `<div class="err-box">${esc(state.inv.error)}</div>`; return; }
-    const all = invList();
+    const quotes = billMode === 'quotes';
+    const all = quotes ? quoteList() : invList();
     const now = new Date();
     const monthStart = dayKey(new Date(now.getFullYear(), now.getMonth(), 1));
-    const outstanding = all.filter((v) => v.status !== 'paid').reduce((t, v) => t + v.totals.total, 0);
-    const paidMonth = all.filter((v) => v.status === 'paid' && (v.paidAt || '').slice(0, 10) >= monthStart).reduce((t, v) => t + v.totals.total, 0);
-    const overdue = all.filter(isOverdue);
-    const shown = all.filter((v) => invFilter === 'all' || (invFilter === 'unpaid' ? v.status !== 'paid' : v.status === invFilter));
-    const chip = (k, l) => `<button type="button" class="chip" data-invf="${k}" aria-pressed="${invFilter === k}">${l}</button>`;
+    const sum = (list) => list.reduce((t, v) => t + v.totals.total, 0);
+    let tiles;
+    let chips;
+    let shown;
+    if (quotes) {
+      const waiting = all.filter((v) => v.status === 'sent' && !isExpired(v));
+      const approvedMonth = all.filter((v) => v.status === 'approved' && (v.approvedAt || '').slice(0, 10) >= monthStart);
+      const closeRate = all.filter((v) => v.status === 'approved' || v.status === 'declined').length
+        ? Math.round((all.filter((v) => v.status === 'approved').length / all.filter((v) => v.status === 'approved' || v.status === 'declined').length) * 100) : null;
+      tiles = `<div class="rev-tile"><span class="l">Awaiting approval</span><b>${esc(money2f(sum(waiting)))}</b><span class="s">${waiting.length} ${waiting.length === 1 ? 'quote' : 'quotes'}</span></div>
+        <div class="rev-tile"><span class="l">Approved this month</span><b>${esc(money2f(sum(approvedMonth)))}</b><span class="s">${closeRate === null ? 'No decisions yet' : `${closeRate}% approval rate`}</span></div>`;
+      const f = { all: () => true, sent: (v) => v.status === 'sent', approved: (v) => v.status === 'approved', declined: (v) => v.status === 'declined' || isExpired(v), draft: (v) => v.status === 'draft' };
+      shown = all.filter(f[invFilter] || f.all);
+      chips = [['all', 'All'], ['sent', 'Awaiting'], ['approved', 'Approved'], ['declined', 'Declined'], ['draft', 'Drafts']];
+    } else {
+      const outstanding = all.filter((v) => v.status !== 'paid');
+      const overdue = all.filter(isOverdue);
+      const paidMonth = all.filter((v) => v.status === 'paid' && (v.paidAt || '').slice(0, 10) >= monthStart);
+      tiles = `<div class="rev-tile"><span class="l">Outstanding</span><b>${esc(money2f(sum(outstanding)))}</b><span class="s">${overdue.length ? `${overdue.length} overdue` : 'Nothing overdue'}</span></div>
+        <div class="rev-tile"><span class="l">Paid this month</span><b>${esc(money2f(sum(paidMonth)))}</b><span class="s">${all.filter((v) => v.status === 'paid').length} paid in total</span></div>`;
+      shown = all.filter((v) => invFilter === 'all' || (invFilter === 'unpaid' ? v.status !== 'paid' : v.status === invFilter));
+      chips = [['all', 'All'], ['unpaid', 'Unpaid'], ['paid', 'Paid'], ['draft', 'Drafts']];
+    }
     box.innerHTML = `
       <div class="inv-top">
-        <h2>Invoices</h2>
+        <div class="seg bill-mode" role="group" aria-label="Quotes or invoices">
+          <button type="button" data-mode="quotes" class="${quotes ? 'on' : ''}">Quotes</button><button type="button" data-mode="invoices" class="${quotes ? '' : 'on'}">Invoices</button>
+        </div>
         <div class="inv-tools">
-          <button class="icon-btn" type="button" data-inva="settings" aria-label="Invoice settings" title="Invoice settings">${icon('gear')}</button>
-          <button class="btn sm" type="button" data-inva="new">${icon('plus')}New invoice</button>
+          <button class="icon-btn" type="button" data-inva="settings" aria-label="Quote and invoice settings" title="Settings">${icon('gear')}</button>
+          <button class="btn sm" type="button" data-inva="new">${icon('plus')}New ${quotes ? 'quote' : 'invoice'}</button>
         </div>
       </div>
-      <div class="rev">
-        <div class="rev-tile"><span class="l">Outstanding</span><b>${esc(money2f(outstanding))}</b><span class="s">${overdue.length ? `${overdue.length} overdue` : 'Nothing overdue'}</span></div>
-        <div class="rev-tile"><span class="l">Paid this month</span><b>${esc(money2f(paidMonth))}</b><span class="s">${all.filter((v) => v.status === 'paid').length} paid in total</span></div>
-      </div>
-      <nav class="chips inv-chips">${chip('all', 'All')}${chip('unpaid', 'Unpaid')}${chip('paid', 'Paid')}${chip('draft', 'Drafts')}</nav>
+      <div class="rev">${tiles}</div>
+      <nav class="chips inv-chips">${chips.map(([k, l]) => `<button type="button" class="chip" data-invf="${k}" aria-pressed="${invFilter === k}">${l}</button>`).join('')}</nav>
       <div class="inv-list">${shown.length ? shown.map(invRow).join('')
-        : `<div class="empty">${all.length ? 'No invoices here.' : 'No invoices yet. Turn a booked job into one from the Calendar, or tap New invoice.'}</div>`}</div>`;
+        : `<div class="empty">${all.length ? 'Nothing here.' : quotes
+          ? 'No quotes yet. Open a lead and tap Create quote, or tap New quote.'
+          : 'No invoices yet. Turn a booked job into one from the Calendar, or tap New invoice.'}</div>`}</div>`;
   }
 
   $('#invView').addEventListener('click', (e) => {
+    const m = e.target.closest('[data-mode]');
+    if (m) { billMode = m.dataset.mode; store.set('lt_billmode', billMode); invFilter = 'all'; renderInvoices(); return; }
     const f = e.target.closest('[data-invf]');
     if (f) { invFilter = f.dataset.invf; renderInvoices(); return; }
     const a = e.target.closest('[data-inva]');
-    if (a) { if (a.dataset.inva === 'settings') openInvoiceSettings(); else openInvoiceEditor(); return; }
+    if (a) {
+      if (a.dataset.inva === 'settings') openInvoiceSettings();
+      else openInvoiceEditor({ kind: billMode === 'quotes' ? 'quote' : 'invoice' });
+      return;
+    }
     const row = e.target.closest('[data-inv]');
-    if (row) openInvoiceView(row.dataset.inv);
+    if (row) openInvoiceView(row.dataset.inv, row.dataset.kind);
   });
 
-  /* ---- invoice panel ---- */
+  /* ---- panel: edit / view / settings ---- */
 
-  const invp = { open: false, mode: null, id: null, draft: null, busy: false };
+  const invp = { open: false, mode: null, kind: 'invoice', id: null, draft: null, busy: false };
 
   function showInvPanel() {
     invp.open = true;
@@ -1537,24 +1598,27 @@
   $('#invClose').addEventListener('click', () => closeInvPanel());
   $('#invScrim').addEventListener('click', () => closeInvPanel());
 
-  function nextNumberHint() {
-    const s = state.inv.settings || { prefix: 'INV-', start: 1001 };
-    const seq = Math.max(s.start - 1, ...invList().map((v) => v.seq || 0)) + 1;
-    return `${s.prefix}${seq}`;
+  function nextNumberHint(kind) {
+    const s = state.inv.settings || {};
+    const prefix = kind === 'quote' ? (s.quotePrefix || 'Q-') : (s.prefix || 'INV-');
+    const start = kind === 'quote' ? (s.quoteStart || 1001) : (s.start || 1001);
+    return `${prefix}${Math.max(start - 1, ...docList(kind).map((v) => v.seq || 0)) + 1}`;
   }
 
-  function openInvoiceEditor({ invoice = null, booking = null, copy = false } = {}) {
+  function openInvoiceEditor({ invoice = null, booking = null, lead = null, copy = false, kind = null } = {}) {
     if (!state.board) return;
-    const s = state.inv.settings || { taxName: 'HST', taxRate: 13, dueDays: 14 };
+    const k = kind || (invoice && invoice.kind) || 'invoice';
+    const s = state.inv.settings || { taxName: 'HST', taxRate: 13, dueDays: 14, quoteDays: 30 };
+    const days = k === 'quote' ? (s.quoteDays || 30) : (s.dueDays || 0);
     const today = dayKey(new Date());
     let d;
     if (invoice) {
       d = JSON.parse(JSON.stringify(invoice));
-      if (copy) Object.assign(d, { id: null, number: '', status: 'draft', issueDate: today, dueDate: ymdAdd(today, s.dueDays || 0), bookingId: null });
+      if (copy) Object.assign(d, { id: null, number: '', status: 'draft', issueDate: today, dueDate: days ? ymdAdd(today, days) : '', bookingId: null, quoteId: null });
     } else {
       d = {
-        id: null, number: '', status: 'draft', customer: { name: '', email: '', phone: '', address: '' },
-        oppId: null, bookingId: null, issueDate: today, dueDate: s.dueDays ? ymdAdd(today, s.dueDays) : '',
+        id: null, kind: k, number: '', status: 'draft', customer: { name: '', email: '', phone: '', address: '' },
+        oppId: null, bookingId: null, issueDate: today, dueDate: days ? ymdAdd(today, days) : '',
         lines: [{ desc: '', qty: 1, price: '' }], taxName: s.taxName, taxRate: s.taxRate, discount: 0, customFields: [], notes: '',
       };
       if (booking) {
@@ -1562,13 +1626,22 @@
         Object.assign(d, {
           customer: { name: booking.lead.name, email: booking.lead.email || '', phone: booking.lead.phone || '', address: booking.address || '' },
           oppId: booking.oppId || null,
-          bookingId: booking.id,
-          lines: [{ desc: booking.title + (booking.notes ? ` - ${booking.notes}` : ''), qty: 1, price: booking.amount || '' }],
-          customFields: [{ label: 'Service date', value: fmtDayLong(st) }],
+          bookingId: k === 'invoice' ? booking.id : null,
+          lines: [{ desc: k === 'invoice' ? booking.title + (booking.notes ? ` - ${booking.notes}` : '') : '', qty: 1, price: booking.amount || '' }],
+          customFields: [{ label: k === 'quote' ? 'Site visit' : 'Service date', value: fmtDayLong(st) }],
+        });
+      } else if (lead) {
+        const b = nextBooking(lead.id);
+        Object.assign(d, {
+          customer: { name: lead.contact.name || lead.name, phone: lead.contact.phone || '', email: lead.contact.email || '', address: (b && b.address) || '' },
+          oppId: lead.id,
+          lines: [{ desc: '', qty: 1, price: lead.value > 0 ? lead.value : '' }],
         });
       }
     }
+    d.kind = k;
     invp.mode = 'edit';
+    invp.kind = k;
     invp.draft = d;
     renderInvoiceEditor();
     showInvPanel();
@@ -1594,15 +1667,18 @@
 
   function renderInvoiceEditor() {
     const d = invp.draft;
+    const q = d.kind === 'quote';
+    const word = q ? 'quote' : 'invoice';
     const leads = state.board.opportunities.slice().sort((a, b) => a.name.localeCompare(b.name));
     $('#invBody').innerHTML = `
-      <h2 id="invTitle">${d.id ? `Edit ${esc(d.number)}` : 'New invoice'}</h2>
-      <p class="sub">${d.bookingId ? 'Filled in from the booked job. Check the lines and price.' : 'Your logo and colours are added to the PDF automatically.'}</p>
+      <h2 id="invTitle">${d.id ? `Edit ${esc(d.number)}` : `New ${word}`}</h2>
+      <p class="sub">${q ? 'Your customer gets a link to review it and tap Approve.'
+        : d.bookingId ? 'Filled in from the booked job. Check the lines and price.' : 'Your logo and colours are added to the PDF automatically.'}</p>
       <form class="cf inv-form" id="invForm" novalidate>
-        ${d.id || d.bookingId ? '' : `<label class="field"><span>Fill in from a lead (optional)</span><select id="ivLead">
-          <option value="">Type the customer in below…</option>${leads.map((l) => `<option value="${esc(l.id)}"${l.id === d.oppId ? ' selected' : ''}>${esc(l.name)}${l.contact.phone ? ` · ${esc(phonePretty(l.contact.phone))}` : ''}</option>`).join('')}
+        ${d.id || d.bookingId || d.oppId ? '' : `<label class="field"><span>Fill in from a lead (optional)</span><select id="ivLead">
+          <option value="">Type the customer in below…</option>${leads.map((l) => `<option value="${esc(l.id)}">${esc(l.name)}${l.contact.phone ? ` · ${esc(phonePretty(l.contact.phone))}` : ''}</option>`).join('')}
         </select></label>`}
-        <div class="field"><span>Bill to</span>
+        <div class="field"><span>${q ? 'Prepared for' : 'Bill to'}</span>
           <input id="ivName" maxlength="80" placeholder="Customer name" value="${esc(d.customer.name)}" aria-label="Customer name">
           <div class="row2 manual-row">
             <input id="ivPhone" type="tel" maxlength="40" placeholder="Phone" value="${esc(d.customer.phone)}" aria-label="Customer phone">
@@ -1611,9 +1687,9 @@
           <input id="ivAddr" class="manual-row" maxlength="200" placeholder="Address" value="${esc(d.customer.address)}" aria-label="Customer address">
         </div>
         <div class="row3">
-          <label class="field"><span>Invoice #</span><input id="ivNum" maxlength="30" placeholder="${esc(d.id ? d.number : nextNumberHint())}" value="${esc(d.id ? d.number : d.number || '')}"></label>
+          <label class="field"><span>${q ? 'Quote #' : 'Invoice #'}</span><input id="ivNum" maxlength="30" placeholder="${esc(d.id ? d.number : nextNumberHint(d.kind))}" value="${esc(d.id ? d.number : d.number || '')}"></label>
           <label class="field"><span>Issued</span><input id="ivIssue" type="date" value="${esc(d.issueDate)}"></label>
-          <label class="field"><span>Due</span><input id="ivDue" type="date" value="${esc(d.dueDate)}"></label>
+          <label class="field"><span>${q ? 'Valid until' : 'Due'}</span><input id="ivDue" type="date" value="${esc(d.dueDate)}"></label>
         </div>
         <div class="field"><span>Lines</span><div id="ivLines">${d.lines.map(lineRow).join('')}</div>
           <button type="button" class="btn sm ghost add-btn" data-add="line">${icon('plus')}Add line</button></div>
@@ -1624,11 +1700,11 @@
         </div>
         <div class="field"><span>Custom fields</span><div id="ivFields">${d.customFields.map(fieldRow).join('')}</div>
           <button type="button" class="btn sm ghost add-btn" data-add="field">${icon('plus')}Add field</button>
-          <span class="hint">Anything extra to show on the invoice: PO #, job site, warranty, permit #…</span></div>
-        <label class="field"><span>Notes</span><textarea id="ivNotes" maxlength="1000" placeholder="Thanks for your business! Warranty: 2 years on labour.">${esc(d.notes)}</textarea></label>
+          <span class="hint">Anything extra to show: PO #, job site, warranty, permit #, start date…</span></div>
+        <label class="field"><span>Notes</span><textarea id="ivNotes" maxlength="1000" placeholder="${q ? 'What\'s included, timeline, warranty…' : 'Thanks for your business! Warranty: 2 years on labour.'}">${esc(d.notes)}</textarea></label>
         <div class="inv-totals" id="ivTotals"></div>
         <p class="err" id="ivErr" hidden></p>
-        <button class="btn" type="submit" id="ivSave">${d.id ? 'Save changes' : 'Create invoice'}</button>
+        <button class="btn" type="submit" id="ivSave">${d.id ? 'Save changes' : `Create ${word}`}</button>
       </form>`;
     renderInvoiceTotals();
   }
@@ -1657,8 +1733,8 @@
     if (line) d.lines[Number(line.dataset.line)][t.dataset.k] = t.value;
     else if (cf) d.customFields[Number(cf.dataset.cf)][t.dataset.k] = t.value;
     else {
-      const map = { ivName: ['customer', 'name'], ivPhone: ['customer', 'phone'], ivEmail: ['customer', 'email'], ivAddr: ['customer', 'address'] };
-      if (map[t.id]) d.customer[map[t.id][1]] = t.value;
+      const map = { ivName: 'name', ivPhone: 'phone', ivEmail: 'email', ivAddr: 'address' };
+      if (map[t.id]) d.customer[map[t.id]] = t.value;
       else if (t.id === 'ivNum') d.number = t.value;
       else if (t.id === 'ivIssue') d.issueDate = t.value;
       else if (t.id === 'ivDue') d.dueDate = t.value;
@@ -1718,31 +1794,30 @@
     btn.disabled = true;
     btn.textContent = 'Saving…';
     try {
-      const pid = state.board.pipeline.id;
       const r = await api('invoices', {
-        action: 'save', pipeline: pid,
+        action: 'save', kind: d.kind, pipeline: state.board.pipeline.id,
         invoice: {
           ...d, lines, number: String(d.number || '').trim(), taxRate: numIn(d.taxRate), discount: numIn(d.discount),
           customFields: d.customFields.filter((f) => String(f.label).trim() || String(f.value).trim()),
         },
       });
-      state.inv.map.set(r.invoice.id, r.invoice);
-      rememberInvoice(pid, r.invoice.id, r.invoice);
-      toast(d.id ? `${r.invoice.number} saved` : `${r.invoice.number} created`);
-      openInvoiceView(r.invoice.id);
+      storeDoc(r.doc);
+      toast(d.id ? `${r.doc.number} saved` : `${r.doc.number} created`);
+      openInvoiceView(r.doc.id, r.doc.kind);
       afterInvoicesChange();
     } catch (ex) {
       fail(ex.message);
       btn.disabled = false;
-      btn.textContent = d.id ? 'Save changes' : 'Create invoice';
+      btn.textContent = d.id ? 'Save changes' : `Create ${d.kind}`;
     } finally {
       invp.busy = false;
     }
   });
 
-  function openInvoiceView(id) {
-    if (!state.inv.map.has(id)) return;
+  function openInvoiceView(id, kind = 'invoice') {
+    if (!docMap(kind).has(id)) return;
     invp.mode = 'view';
+    invp.kind = kind;
     invp.id = id;
     invp.draft = null;
     renderInvoiceView();
@@ -1750,20 +1825,43 @@
   }
 
   function renderInvoiceView() {
-    const v = state.inv.map.get(invp.id);
+    const v = docMap(invp.kind).get(invp.id);
     if (!v) { closeInvPanel(); return; }
+    const q = v.kind === 'quote';
     const t = v.totals;
     const canShare = !!navigator.share;
+    const linked = q && v.invoiceId ? state.inv.map.get(v.invoiceId) : null;
+    const fromQuote = !q && v.quoteId ? state.inv.quotes.get(v.quoteId) : null;
+    const info = [
+      q && v.viewedAt && v.status === 'sent' ? `Opened by the customer ${ago(v.viewedAt)}.` : '',
+      q && v.status === 'approved' ? `Approved by ${v.approvedName || 'the customer'} on ${new Date(v.approvedAt).toLocaleDateString()}.` : '',
+      q && v.status === 'declined' ? `Declined${v.declineReason ? `: “${v.declineReason}”` : '.'}` : '',
+      isExpired(v) ? `Expired on ${prettyYmd(v.dueDate)}. Edit the "Valid until" date to send it again.` : '',
+    ].filter(Boolean).join(' ');
+    let primary;
+    if (q) {
+      primary = v.status === 'approved'
+        ? (linked ? `<button class="btn" type="button" data-iv="openinvoice">${icon('doc')}Open invoice ${esc(linked.number)}</button>`
+          : `<button class="btn" type="button" data-iv="convert">${icon('doc')}Turn into an invoice</button>`)
+        : `<button class="btn" type="button" data-iv="approve">${icon('check')}Mark as approved</button>
+           <button class="btn ghost" type="button" data-iv="decline">Mark as declined</button>`;
+    } else {
+      primary = v.status === 'paid'
+        ? '<button class="btn ghost" type="button" data-iv="unpaid">Mark as unpaid</button>'
+        : `<button class="btn" type="button" data-iv="paid">${icon('check')}Mark as paid</button>`;
+    }
     $('#invBody').innerHTML = `
       <h2 id="invTitle">${esc(v.number)} ${statusPill(v)}</h2>
-      <p class="sub">${esc(v.customer.name)} · issued ${esc(prettyYmd(v.issueDate))}${v.dueDate ? ` · due ${esc(prettyYmd(v.dueDate))}` : ''}</p>
-      <div class="inv-big"><span>${v.status === 'paid' ? 'Paid' : 'Amount due'}</span><b>${esc(money2f(t.total))}</b></div>
+      <p class="sub">${esc(v.customer.name)} · issued ${esc(prettyYmd(v.issueDate))}${v.dueDate ? ` · ${q ? 'valid until' : 'due'} ${esc(prettyYmd(v.dueDate))}` : ''}</p>
+      ${info ? `<p class="doc-info">${esc(info)}</p>` : ''}
+      <div class="inv-big"><span>${q ? 'Quote total' : v.status === 'paid' ? 'Paid' : 'Amount due'}</span><b>${esc(money2f(t.total))}</b></div>
       <div class="actions inv-acts">
-        <a class="act" href="${esc(v.pdf)}" download="Invoice-${esc(v.number)}.pdf" target="_blank" rel="noopener">${icon('download')}Download</a>
+        <a class="act" href="${esc(v.pdf)}" download="${q ? 'Quote' : 'Invoice'}-${esc(v.number)}.pdf" target="_blank" rel="noopener">${icon('download')}PDF</a>
         <button class="act" type="button" data-iv="sms"${v.customer.phone ? '' : ' disabled'}>${icon('sms')}Text it</button>
         <button class="act" type="button" data-iv="email"${v.customer.email ? '' : ' disabled'}>${icon('mail')}Email it</button>
       </div>
       <div class="inv-acts2">
+        ${q ? `<a class="btn sm ghost" href="${esc(v.link)}" target="_blank" rel="noopener">${icon('next')}Preview</a>` : ''}
         ${canShare ? `<button class="btn sm ghost" type="button" data-iv="share">${icon('share')}Share…</button>` : ''}
         <button class="btn sm ghost" type="button" data-iv="copy">${icon('link')}Copy link</button>
       </div>
@@ -1775,40 +1873,47 @@
           <div class="sum grand"><span>Total</span><b>${esc(money2f(t.total))}</b></div></div></div>
       ${v.customFields.length ? `<div class="sec"><h3>Details</h3><dl class="detail">${v.customFields.map((f) => `<dt>${esc(f.label)}</dt><dd>${esc(f.value)}</dd>`).join('')}</dl></div>` : ''}
       <div class="sec bk-actions">
-        ${v.status === 'paid'
-          ? '<button class="btn ghost" type="button" data-iv="unpaid">Mark as unpaid</button>'
-          : `<button class="btn" type="button" data-iv="paid">${icon('check')}Mark as paid</button>`}
-        <button class="btn ghost" type="button" data-iv="edit">Edit invoice</button>
+        ${primary}
+        ${fromQuote ? `<button class="btn ghost" type="button" data-iv="openquote">From quote ${esc(fromQuote.number)}</button>` : ''}
+        <button class="btn ghost" type="button" data-iv="edit">Edit ${q ? 'quote' : 'invoice'}</button>
         <button class="btn ghost" type="button" data-iv="copyinv">Duplicate</button>
-        <button class="btn ghost danger" type="button" data-iv="delete">Delete invoice</button>
+        <button class="btn ghost danger" type="button" data-iv="delete">Delete ${q ? 'quote' : 'invoice'}</button>
       </div>`;
   }
 
-  async function setStatus(v, status) {
-    const pid = state.board.pipeline.id;
-    const r = await api('invoices', { action: 'status', pipeline: pid, id: v.id, status });
-    state.inv.map.set(r.invoice.id, r.invoice);
-    rememberInvoice(pid, r.invoice.id, r.invoice);
+  async function setStatus(v, status, extra = {}) {
+    const r = await api('invoices', { action: 'status', kind: v.kind, pipeline: state.board.pipeline.id, id: v.id, status, ...extra });
+    const doc = r.doc || r.quote;
+    storeDoc(doc);
+    if (r.invoice) storeDoc({ ...r.invoice, kind: 'invoice' });
+    if (r.stageName && v.oppId) {
+      const o = findOpp(v.oppId);
+      const st = state.board.pipeline.stages.find((s) => s.name === r.stageName);
+      if (o && st) { o.stageId = st.id; o.stageChangedAt = new Date().toISOString(); render(); }
+    }
     afterInvoicesChange();
     if (invp.open && invp.mode === 'view') renderInvoiceView();
-    return r.invoice;
+    return r;
   }
 
   async function invoiceAction(a, btn) {
-    const v = state.inv.map.get(invp.id);
+    const v = docMap(invp.kind).get(invp.id);
     if (!v) return;
+    const q = v.kind === 'quote';
     const pid = state.board.pipeline.id;
-    const link = absUrl(v.pdf);
+    const link = absUrl(q ? v.link : v.pdf);
     const first = v.customer.name.split(/\s+/)[0];
     const biz = (state.inv.settings && state.inv.settings.businessName) || (state.me && state.me.name) || '';
-    const msg = `Hi ${first}, here's your invoice ${v.number} from ${biz} for ${money2f(v.totals.total)}: ${link}`;
+    const msg = q
+      ? `Hi ${first}, here's your quote ${v.number} from ${biz} for ${money2f(v.totals.total)}. Review and approve it here: ${link}`
+      : `Hi ${first}, here's your invoice ${v.number} from ${biz} for ${money2f(v.totals.total)}: ${link}`;
+    const markSent = async () => { if (v.status === 'draft') await setStatus(v, 'sent'); };
     try {
       if (a === 'sms' || a === 'email') {
         btn.disabled = true;
-        const r = await api('invoices', { action: 'send', pipeline: pid, id: v.id, via: a });
+        const r = await api('invoices', { action: 'send', kind: v.kind, pipeline: pid, id: v.id, via: a });
         if (r.sent) {
-          state.inv.map.set(r.invoice.id, r.invoice);
-          rememberInvoice(pid, r.invoice.id, r.invoice);
+          storeDoc(r.doc);
           toast(a === 'sms' ? `Texted to ${v.customer.phone}` : `Emailed to ${v.customer.email}`);
           afterInvoicesChange();
           renderInvoiceView();
@@ -1816,29 +1921,52 @@
           // GHL sending isn't switched on: hand it to the phone's own Messages / Mail app.
           const url = a === 'sms'
             ? `sms:${v.customer.phone}${/iPhone|iPad|Mac/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(msg)}`
-            : `mailto:${v.customer.email}?subject=${encodeURIComponent(`Invoice ${v.number} from ${biz}`)}&body=${encodeURIComponent(`${msg}\n\nThank you!\n${biz}`)}`;
+            : `mailto:${v.customer.email}?subject=${encodeURIComponent(`${WORD[v.kind]} ${v.number} from ${biz}`)}&body=${encodeURIComponent(`${msg}\n\nThank you!\n${biz}`)}`;
           window.location.href = url;
-          if (v.status === 'draft') await setStatus(v, 'sent');
+          await markSent();
         }
         btn.disabled = false;
       } else if (a === 'share') {
-        await navigator.share({ title: `Invoice ${v.number}`, text: msg, url: link }).catch(() => null);
-        if (v.status === 'draft') await setStatus(v, 'sent');
+        await navigator.share({ title: `${WORD[v.kind]} ${v.number}`, text: msg, url: link }).catch(() => null);
+        await markSent();
       } else if (a === 'copy') {
         await navigator.clipboard.writeText(link);
-        toast('Invoice link copied');
+        toast(`${WORD[v.kind]} link copied`);
+        await markSent();
       } else if (a === 'paid' || a === 'unpaid') {
         await setStatus(v, a === 'paid' ? 'paid' : 'sent');
         toast(a === 'paid' ? `${v.number} marked paid` : `${v.number} marked unpaid`);
+      } else if (a === 'approve') {
+        if (!window.confirm(`Mark ${v.number} as approved? This moves the lead to Closed and creates the invoice as a draft.`)) return;
+        btn.disabled = true;
+        const r = await setStatus(v, 'approved');
+        toast(`Approved${r.invoice ? ` · invoice ${r.invoice.number} created` : ''}${r.stageName ? ` · moved to ${r.stageName}` : ''}`);
+      } else if (a === 'decline') {
+        const reason = window.prompt('Why did they decline? (optional)', '');
+        if (reason === null) return;
+        await setStatus(v, 'declined', { reason });
+        toast(`${v.number} marked declined`);
+      } else if (a === 'convert') {
+        btn.disabled = true;
+        const r = await api('invoices', { action: 'convert', kind: 'quote', pipeline: pid, id: v.id });
+        storeDoc(r.doc);
+        storeDoc({ ...r.invoice, kind: 'invoice' });
+        afterInvoicesChange();
+        openInvoiceView(r.invoice.id, 'invoice');
+        toast(`Invoice ${r.invoice.number} created from ${v.number}`);
+      } else if (a === 'openinvoice') {
+        openInvoiceView(v.invoiceId, 'invoice');
+      } else if (a === 'openquote') {
+        openInvoiceView(v.quoteId, 'quote');
       } else if (a === 'edit') {
         openInvoiceEditor({ invoice: v });
       } else if (a === 'copyinv') {
         openInvoiceEditor({ invoice: v, copy: true });
       } else if (a === 'delete') {
-        if (!window.confirm(`Delete invoice ${v.number}? This can't be undone.`)) return;
-        await api('invoices', { action: 'delete', pipeline: pid, id: v.id });
-        state.inv.map.delete(v.id);
-        rememberInvoice(pid, v.id, null);
+        if (!window.confirm(`Delete ${WORD[v.kind].toLowerCase()} ${v.number}? This can't be undone.`)) return;
+        await api('invoices', { action: 'delete', kind: v.kind, pipeline: pid, id: v.id });
+        docMap(v.kind).delete(v.id);
+        rememberDoc(pid, v.kind, v.id, null);
         toast(`${v.number} deleted`);
         closeInvPanel();
         afterInvoicesChange();
@@ -1849,14 +1977,15 @@
     }
   }
 
-  /* ---- invoice settings ---- */
+  /* ---- settings ---- */
 
   const SETTINGS_FIELDS = [
     ['businessName', 'Business name', 'text'], ['address', 'Business address', 'text'], ['phone', 'Phone', 'tel'],
     ['email', 'Email', 'email'], ['website', 'Website', 'text'],
     ['taxNumberLabel', 'Tax number label', 'text'], ['taxNumber', 'Tax number (HST/GST #)', 'text'],
-    ['taxName', 'Default tax name', 'text'], ['taxRate', 'Default tax %', 'num'], ['dueDays', 'Due in (days)', 'num'],
-    ['prefix', 'Invoice # prefix', 'text'], ['start', 'First invoice #', 'num'],
+    ['taxName', 'Default tax name', 'text'], ['taxRate', 'Default tax %', 'num'],
+    ['prefix', 'Invoice # prefix', 'text'], ['start', 'First invoice #', 'num'], ['dueDays', 'Invoices due in (days)', 'num'],
+    ['quotePrefix', 'Quote # prefix', 'text'], ['quoteStart', 'First quote #', 'num'], ['quoteDays', 'Quotes valid for (days)', 'num'],
   ];
 
   function openInvoiceSettings() {
@@ -1864,12 +1993,12 @@
     invp.draft = { ...(state.inv.settings || {}) };
     const d = invp.draft;
     $('#invBody').innerHTML = `
-      <h2 id="invTitle">Invoice settings</h2>
-      <p class="sub">Shown on every invoice PDF. Your logo and colours come from your portal branding.</p>
+      <h2 id="invTitle">Quote &amp; invoice settings</h2>
+      <p class="sub">Shown on every quote and invoice. Your logo and colours come from your portal branding.</p>
       <form class="cf" id="invSettingsForm" novalidate>
         ${SETTINGS_FIELDS.map(([k, label, type]) => `<label class="field"><span>${esc(label)}</span>
-          <input data-s="${k}" ${type === 'num' ? 'inputmode="decimal"' : `type="${type === 'text' ? 'text' : type}"`} value="${esc(d[k] == null ? '' : d[k])}"></label>`).join('')}
-        <label class="field"><span>How to pay</span><textarea data-s="payment" maxlength="500" placeholder="E-transfer to payments@yourbusiness.ca, or cheque payable to…">${esc(d.payment || '')}</textarea></label>
+          <input data-s="${k}" ${type === 'num' ? 'inputmode="decimal"' : `type="${type}"`} value="${esc(d[k] == null ? '' : d[k])}"></label>`).join('')}
+        <label class="field"><span>How to pay (invoices)</span><textarea data-s="payment" maxlength="500" placeholder="E-transfer to payments@yourbusiness.ca, or cheque payable to…">${esc(d.payment || '')}</textarea></label>
         <label class="field"><span>Terms / footer note</span><textarea data-s="terms" maxlength="500">${esc(d.terms || '')}</textarea></label>
         <p class="err" id="ivErr" hidden></p>
         <button class="btn" type="submit" id="ivSetSave">Save settings</button>
@@ -1884,7 +2013,7 @@
     try {
       const r = await api('invoices', { action: 'settings', pipeline: state.board.pipeline.id, settings: invp.draft });
       state.inv.settings = r.settings;
-      toast('Invoice settings saved');
+      toast('Settings saved');
       closeInvPanel();
       afterInvoicesChange();
     } catch (ex) {
@@ -1922,7 +2051,12 @@
     const firstStage = stages[0];
     const waiting = firstStage ? opps.filter((o) => o.stageId === firstStage.id) : [];
     const overdue = unpaid.filter(isOverdue);
+    const approvedQ = quoteList().filter((v) => v.status === 'approved' && v.oppId && findOpp(v.oppId)
+      && Date.now() - new Date(v.approvedAt) < 14 * 864e5 && !nextBooking(v.oppId));
+    const waitingQ = quoteList().filter((v) => v.status === 'sent' && !isExpired(v));
     const attention = [
+      ...approvedQ.slice(0, 3).map((v) => `<button type="button" class="att ok" data-sched="${esc(v.oppId)}">${icon('check')}<span><b class="nm">${esc(v.customer.name)}</b> approved quote ${esc(v.number)} · ${esc(money2f(v.totals.total))}. Schedule the job.</span>${icon('next')}</button>`),
+      waitingQ.length && `<button type="button" class="att" data-go="invoices" data-bill="quotes"><b>${waitingQ.length}</b><span>${waitingQ.length === 1 ? 'quote' : 'quotes'} awaiting approval · ${esc(money2f(waitingQ.reduce((t, v) => t + v.totals.total, 0)))}</span>${icon('next')}</button>`,
       waiting.length && `<button type="button" class="att" data-go="leads" data-stage="${esc(firstStage.id)}"><b>${waiting.length}</b><span>${waiting.length === 1 ? 'lead' : 'leads'} in ${esc(firstStage.name)}. Call them first.</span>${icon('next')}</button>`,
       overdue.length && `<button type="button" class="att warn" data-go="invoices"><b>${overdue.length}</b><span>overdue ${overdue.length === 1 ? 'invoice' : 'invoices'} · ${esc(money2f(overdue.reduce((t, v) => t + v.totals.total, 0)))}</span>${icon('next')}</button>`,
     ].filter(Boolean).join('');
@@ -1957,8 +2091,11 @@
 
   $('#homeView').addEventListener('click', (e) => {
     if (e.target.closest('[data-stop]')) return;
+    const sched = e.target.closest('[data-sched]');
+    if (sched) { openBookingForm({ oppId: sched.dataset.sched, lockLead: true, closing: true }); return; }
     const go = e.target.closest('[data-go]');
     if (go) {
+      if (go.dataset.bill) { billMode = go.dataset.bill; store.set('lt_billmode', billMode); invFilter = 'all'; }
       if (go.dataset.stage) { state.stage = go.dataset.stage; state.query = ''; $('#search').value = ''; }
       showView(go.dataset.go);
       return;
@@ -1968,7 +2105,7 @@
     const card = e.target.closest('[data-bk]');
     if (card) { openBookingView(card.dataset.bk); return; }
     const inv = e.target.closest('[data-inv]');
-    if (inv) openInvoiceView(inv.dataset.inv);
+    if (inv) openInvoiceView(inv.dataset.inv, inv.dataset.kind || 'invoice');
   });
 
   /* ---------------- admin: clients page ---------------- */

@@ -16,8 +16,10 @@
  *   GET  /api/bookings?months=YYYY-MM,...[&pipeline=<id>]   portal calendar appointments
  *   POST /api/bookings {action:'save'|'cancel'|'complete', ...}   book / change / cancel / mark a job done
  *   GET  /api/invoices[?pipeline=]       invoices + invoice settings for the pipeline
- *   POST /api/invoices {action:'save'|'status'|'delete'|'settings'|'send', ...}
- *   GET  /api/invoice-pdf?t=<signed>     branded invoice PDF (public link, one saved version)
+ *   POST /api/invoices {kind:'invoice'|'quote', action:'save'|'status'|'convert'|'delete'|'settings'|'send', ...}
+ *   GET  /api/invoice-pdf?t=<signed>     branded quote / invoice PDF (public link, one saved version)
+ *   GET  /api/quote-public?t=<signed>    quote for the customer's approval page (/q?t=…)
+ *   POST /api/quote-public {t, action:'approve'|'decline', name, agree, reason}
  *   POST /api/remove   {id, reason}         delete a lead from the pipeline (contact kept, tagged "removed by client")
  *   POST /api/meta     {id, meta:'yes'|'no'}  mark whether a lead came from Meta (GHL tags "meta lead" / "not meta lead")
  *   GET  /api/ics?t=<signed token>        one appointment as an .ics file (add to phone calendar)
@@ -819,13 +821,20 @@ async function completeBooking(store, user, body) {
   return { booking: publicBooking(rec), opportunity, stageName, synced };
 }
 
-/* ---------------- invoices ----------------
- * Every save is a NEW blob key ("inv/<pipelineId>/<invoiceId>/<version>"), so a link to a
+/* ---------------- quotes & invoices ----------------
+ * Every save is a NEW blob key ("<inv|quo>/<pipelineId>/<docId>/<version>"), so a link to a
  * version always shows exactly what was saved, and storage sync delays never serve an old copy.
  * Settings live the same way at "invcfg/<pipelineId>/<version>".
  */
-const INV_ID_RE = /^[a-f0-9]{12}$/;
-const INV_STATUS = ['draft', 'sent', 'paid'];
+const DOC_ID_RE = /^[a-f0-9]{12}$/;
+const KINDS = {
+  invoice: { dir: 'inv', label: 'Invoice', statuses: ['draft', 'sent', 'paid'] },
+  quote: { dir: 'quo', label: 'Quote', statuses: ['draft', 'sent', 'approved', 'declined'] },
+};
+const kindOf = (k) => (k === 'quote' ? 'quote' : 'invoice');
+const docBase = (kind, pid, id) => `${KINDS[kind].dir}/${pid}/${id}`;
+const TAG_QUOTE_OK = 'quote approved';
+const TAG_QUOTE_NO = 'quote declined';
 const recentDocs = new Map(); // base key -> { key, doc, at }  (this instance's own recent writes)
 
 const versionKey = () => `${Date.now().toString(36).padStart(9, '0')}-${crypto.randomBytes(3).toString('hex')}`;
@@ -864,11 +873,14 @@ async function vlatest(store, base) {
 
 const money2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const clip = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+const ymdOk = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
+const ymdPlus = (ymd, days) => new Date(Date.parse(`${ymd}T12:00:00Z`) + days * 864e5).toISOString().slice(0, 10);
+const todayYmd = () => ymdIn(new Date().toISOString(), 'America/Toronto');
 
-function invoiceTotals(inv) {
-  const subtotal = money2(inv.lines.reduce((t, l) => t + money2(l.qty * l.price), 0));
-  const discount = Math.min(subtotal, money2(inv.discount));
-  const tax = money2(((subtotal - discount) * (Number(inv.taxRate) || 0)) / 100);
+function docTotals(d) {
+  const subtotal = money2(d.lines.reduce((t, l) => t + money2(l.qty * l.price), 0));
+  const discount = Math.min(subtotal, money2(d.discount));
+  const tax = money2(((subtotal - discount) * (Number(d.taxRate) || 0)) / 100);
   return { subtotal, discount, tax, total: money2(subtotal - discount + tax) };
 }
 
@@ -883,11 +895,13 @@ async function invoiceSettings(store, pid, clientName) {
     dueDays: 14,
     payment: '', terms: 'Thank you for your business!',
     prefix: `${initials}-`, start: 1001,
+    quotePrefix: `${initials}-Q`, quoteStart: 1001, quoteDays: 30,
     ...(r ? r.doc : {}),
   };
 }
 
 function cleanSettings(s) {
+  const n = (v, lo, hi, d) => Math.min(hi, Math.max(lo, Math.round(Number(v) || d)));
   return {
     businessName: clip(s.businessName, 80), address: clip(s.address, 200), phone: clip(s.phone, 40),
     email: clip(s.email, 120), website: clip(s.website, 120),
@@ -895,36 +909,63 @@ function cleanSettings(s) {
     taxName: clip(s.taxName, 20), taxRate: Math.min(50, Math.max(0, Number(s.taxRate) || 0)),
     dueDays: Math.min(365, Math.max(0, Math.round(Number(s.dueDays) || 0))),
     payment: clip(s.payment, 500), terms: clip(s.terms, 500),
-    prefix: clip(s.prefix, 12).replace(/\s+/g, ''), start: Math.min(1e7, Math.max(1, Math.round(Number(s.start) || 1001))),
+    prefix: clip(s.prefix, 12).replace(/\s+/g, ''), start: n(s.start, 1, 1e7, 1001),
+    quotePrefix: clip(s.quotePrefix, 12).replace(/\s+/g, ''), quoteStart: n(s.quoteStart, 1, 1e7, 1001),
+    quoteDays: n(s.quoteDays, 1, 365, 30),
   };
 }
+
+const ownerOf = async (store, pid) => (await allUsers(store)).find((x) => !x.admin && x.p === pid) || null;
 
 function pdfToken(pid, key) {
   const payload = Buffer.from(JSON.stringify({ p: pid, k: key })).toString('base64url');
   return `${payload}.${sign(`inv.${payload}`).slice(0, 24)}`;
 }
 
-function publicInvoice(pid, key, doc) {
-  return { ...doc, pdf: `/api/invoice-pdf?t=${pdfToken(pid, key)}` };
+function quoteToken(pid, id, key) {
+  const payload = Buffer.from(JSON.stringify({ p: pid, i: id, k: key })).toString('base64url');
+  return `${payload}.${sign(`quo.${payload}`).slice(0, 24)}`;
 }
 
-async function listInvoices(store, pid) {
-  const all = await vlatestAll(store, `inv/${pid}/`);
+function readQuoteToken(t) {
+  const [payload, sig] = String(t || '').split('.');
+  if (!payload || !sig || sign(`quo.${payload}`).slice(0, 24) !== sig) throw new HttpError(404, 'This quote link is not valid.');
+  const v = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+  if (!DOC_ID_RE.test(String(v.i)) || !String(v.k).startsWith(`quo/${v.p}/${v.i}/`)) throw new HttpError(404, 'This quote link is not valid.');
+  return v;
+}
+
+function publicDoc(kind, pid, key, doc) {
+  return {
+    ...doc,
+    kind,
+    pdf: `/api/invoice-pdf?t=${pdfToken(pid, key)}`,
+    ...(kind === 'quote' ? { link: `/q?t=${quoteToken(pid, doc.id, key)}` } : {}),
+  };
+}
+
+async function listDocs(store, pid, kind) {
+  const all = await vlatestAll(store, `${KINDS[kind].dir}/${pid}/`);
   return [...all.values()].filter((r) => !r.doc.deleted)
-    .map((r) => publicInvoice(pid, r.key, r.doc))
+    .map((r) => publicDoc(kind, pid, r.key, r.doc))
     .sort((a, b) => (b.seq || 0) - (a.seq || 0) || String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
-const ymdOk = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
+async function nextSeq(store, pid, kind, settings) {
+  const start = kind === 'quote' ? settings.quoteStart : settings.start;
+  const existing = await listDocs(store, pid, kind);
+  return Math.max(start - 1, ...existing.map((x) => x.seq || 0)) + 1;
+}
 
-async function saveInvoice(store, user, pid, body) {
-  const v = body.invoice || {};
+async function saveDoc(store, user, pid, body, kind) {
+  const v = body.invoice || body.doc || {};
   const isNew = !v.id;
-  if (!isNew && !INV_ID_RE.test(String(v.id))) throw new HttpError(400, 'Unknown invoice.');
+  const word = KINDS[kind].label.toLowerCase();
+  if (!isNew && !DOC_ID_RE.test(String(v.id))) throw new HttpError(400, `Unknown ${word}.`);
   const id = isNew ? crypto.randomBytes(6).toString('hex') : v.id;
-  const prevRec = isNew ? null : await vlatest(store, `inv/${pid}/${id}`);
+  const prevRec = isNew ? null : await vlatest(store, docBase(kind, pid, id));
   const prev = prevRec ? prevRec.doc : null;
-  if (!isNew && (!prev || prev.deleted)) throw new HttpError(404, 'That invoice no longer exists.');
+  if (!isNew && (!prev || prev.deleted)) throw new HttpError(404, `That ${word} no longer exists.`);
 
   const lines = (Array.isArray(v.lines) ? v.lines : []).slice(0, 60)
     .map((l) => ({ desc: clip(l.desc, 300), qty: money2(l.qty), price: money2(l.price) }))
@@ -949,17 +990,18 @@ async function saveInvoice(store, user, pid, body) {
   let seq = prev ? prev.seq : null;
   let number = clip(v.number, 30);
   if (isNew) {
-    const existing = await listInvoices(store, pid);
-    seq = Math.max(settings.start - 1, ...existing.map((x) => x.seq || 0)) + 1;
-    if (!number) number = `${settings.prefix}${seq}`;
+    seq = await nextSeq(store, pid, kind, settings);
+    if (!number) number = `${kind === 'quote' ? settings.quotePrefix : settings.prefix}${seq}`;
   }
   if (!number) number = prev.number;
   const now = new Date().toISOString();
+  const keep = (k) => (prev && prev[k]) || null;
   const doc = {
-    id, pipelineId: pid, seq, number,
-    status: INV_STATUS.includes(v.status) ? v.status : (prev ? prev.status : 'draft'),
+    id, kind, pipelineId: pid, seq, number,
+    status: KINDS[kind].statuses.includes(v.status) && isNew ? v.status : (prev ? prev.status : 'draft'),
     customer, oppId, contactId,
-    bookingId: clip(v.bookingId, 20) || (prev && prev.bookingId) || null,
+    bookingId: clip(v.bookingId, 20) || keep('bookingId'),
+    quoteId: clip(v.quoteId, 20) || keep('quoteId'),
     issueDate: ymdOk(v.issueDate) ? v.issueDate : now.slice(0, 10),
     dueDate: ymdOk(v.dueDate) ? v.dueDate : '',
     lines,
@@ -969,39 +1011,168 @@ async function saveInvoice(store, user, pid, body) {
     customFields: (Array.isArray(v.customFields) ? v.customFields : []).slice(0, 12)
       .map((f) => ({ label: clip(f.label, 40), value: clip(f.value, 200) })).filter((f) => f.label || f.value),
     notes: clip(v.notes, 1000),
-    createdBy: (prev && prev.createdBy) || user.u,
-    createdAt: (prev && prev.createdAt) || now,
+    createdBy: keep('createdBy') || user.u,
+    createdAt: keep('createdAt') || now,
     updatedAt: now,
-    sentAt: (prev && prev.sentAt) || null,
-    paidAt: (prev && prev.paidAt) || null,
+    sentAt: keep('sentAt'), paidAt: keep('paidAt'), viewedAt: keep('viewedAt'),
+    approvedAt: keep('approvedAt'), approvedName: keep('approvedName'), declinedAt: keep('declinedAt'),
+    declineReason: keep('declineReason'), invoiceId: keep('invoiceId'),
   };
-  doc.totals = invoiceTotals(doc);
-  const key = await vput(store, `inv/${pid}/${id}`, doc);
-  return publicInvoice(pid, key, doc);
+  doc.totals = docTotals(doc);
+  const key = await vput(store, docBase(kind, pid, id), doc);
+  return publicDoc(kind, pid, key, doc);
 }
 
-async function setInvoiceStatus(store, pid, id, status) {
-  if (!INV_ID_RE.test(String(id)) || !INV_STATUS.includes(status)) throw new HttpError(400, 'Unknown invoice.');
-  const r = await vlatest(store, `inv/${pid}/${id}`);
-  if (!r || r.doc.deleted) throw new HttpError(404, 'That invoice no longer exists.');
+async function setDocStatus(store, pid, kind, id, status, extra = {}) {
+  const word = KINDS[kind].label.toLowerCase();
+  if (!DOC_ID_RE.test(String(id)) || !KINDS[kind].statuses.includes(status)) throw new HttpError(400, `Unknown ${word}.`);
+  const r = await vlatest(store, docBase(kind, pid, id));
+  if (!r || r.doc.deleted) throw new HttpError(404, `That ${word} no longer exists.`);
   const now = new Date().toISOString();
   const doc = {
-    ...r.doc, status, updatedAt: now,
-    paidAt: status === 'paid' ? (r.doc.paidAt || now) : null,
-    sentAt: status === 'sent' || status === 'paid' ? (r.doc.sentAt || now) : r.doc.sentAt,
+    ...r.doc, ...extra, status, updatedAt: now,
+    sentAt: status === 'draft' ? r.doc.sentAt : (r.doc.sentAt || now),
+    ...(kind === 'invoice' ? { paidAt: status === 'paid' ? (r.doc.paidAt || now) : null } : {}),
   };
-  const key = await vput(store, `inv/${pid}/${id}`, doc);
-  return publicInvoice(pid, key, doc);
+  const key = await vput(store, docBase(kind, pid, id), doc);
+  return publicDoc(kind, pid, key, doc);
 }
 
-async function deleteInvoice(store, pid, id) {
-  if (!INV_ID_RE.test(String(id))) throw new HttpError(400, 'Unknown invoice.');
-  const r = await vlatest(store, `inv/${pid}/${id}`);
-  if (!r) throw new HttpError(404, 'That invoice no longer exists.');
-  await vput(store, `inv/${pid}/${id}`, { ...r.doc, deleted: true, updatedAt: new Date().toISOString() });
+async function deleteDoc(store, pid, kind, id) {
+  if (!DOC_ID_RE.test(String(id))) throw new HttpError(400, 'Unknown document.');
+  const r = await vlatest(store, docBase(kind, pid, id));
+  if (!r) throw new HttpError(404, 'That document no longer exists.');
+  await vput(store, docBase(kind, pid, id), { ...r.doc, deleted: true, updatedAt: new Date().toISOString() });
 }
 
-/* ---- branded PDF ---- */
+/* ---- quote → lead stage / invoice ---- */
+
+const closedStageOf = (p) => p && p.stages.find((s) => /\b(closed|won)\b/i.test(s.name) && !/lost/i.test(s.name));
+const quotedStageOf = (p) => p && p.stages.find((s) => /quot/i.test(s.name));
+
+// Move a lead forward to `target` (never backwards, e.g. out of Closed or Job Completed).
+async function moveLeadForward(pid, oppId, target, extraPatch = {}) {
+  if (!oppId) return null;
+  try {
+    const p = (await pipelines()).find((x) => x.id === pid);
+    const r = await ghl('GET', `/opportunities/${enc(oppId)}`);
+    const o = r.opportunity || r;
+    if (!o || o.pipelineId !== pid) return null;
+    const idx = (sid) => p.stages.findIndex((s) => s.id === sid);
+    const patch = { ...extraPatch };
+    if (target && idx(o.pipelineStageId) < idx(target.id)) Object.assign(patch, { pipelineId: pid, pipelineStageId: target.id });
+    if (Object.keys(patch).length) await ghl('PUT', `/opportunities/${enc(oppId)}`, patch);
+    return patch.pipelineStageId ? target.name : null;
+  } catch { return null; }
+}
+
+async function invoiceFromQuote(store, pid, q, by) {
+  const owner = await ownerOf(store, pid);
+  const settings = await invoiceSettings(store, pid, owner ? owner.n : '');
+  const id = crypto.randomBytes(6).toString('hex');
+  const seq = await nextSeq(store, pid, 'invoice', settings);
+  const today = todayYmd();
+  const now = new Date().toISOString();
+  const doc = {
+    id, kind: 'invoice', pipelineId: pid, seq, number: `${settings.prefix}${seq}`, status: 'draft',
+    customer: q.customer, oppId: q.oppId, contactId: q.contactId, bookingId: q.bookingId || null, quoteId: q.id,
+    issueDate: today, dueDate: settings.dueDays ? ymdPlus(today, settings.dueDays) : '',
+    lines: q.lines, taxName: q.taxName, taxRate: q.taxRate, discount: q.discount,
+    customFields: q.customFields, notes: q.notes,
+    createdBy: by, createdAt: now, updatedAt: now,
+    sentAt: null, paidAt: null, viewedAt: null, approvedAt: null, approvedName: null,
+    declinedAt: null, declineReason: null, invoiceId: null,
+  };
+  doc.totals = docTotals(doc);
+  const key = await vput(store, docBase('invoice', pid, id), doc);
+  return publicDoc('invoice', pid, key, doc);
+}
+
+async function approveQuote(store, pid, id, { name, by }) {
+  const r = await vlatest(store, docBase('quote', pid, id));
+  if (!r || r.doc.deleted) throw new HttpError(404, 'This quote is no longer available.');
+  if (r.doc.status === 'approved') return { quote: publicDoc('quote', pid, r.key, r.doc), invoice: null, already: true };
+  const invoice = r.doc.invoiceId ? null : await invoiceFromQuote(store, pid, r.doc, by);
+  const now = new Date().toISOString();
+  const doc = {
+    ...r.doc, status: 'approved', approvedAt: now, approvedName: clip(name, 80) || by,
+    invoiceId: r.doc.invoiceId || (invoice && invoice.id), updatedAt: now,
+  };
+  const key = await vput(store, docBase('quote', pid, id), doc);
+  const p = (await pipelines()).find((x) => x.id === pid);
+  // Job value = the quote before tax.
+  const stageName = await moveLeadForward(pid, doc.oppId, closedStageOf(p), { monetaryValue: money2(doc.totals.subtotal - doc.totals.discount) });
+  if (doc.contactId) {
+    await ghl('POST', `/contacts/${enc(doc.contactId)}/tags`, { tags: [TAG_QUOTE_OK] }).catch(() => {});
+    await ghlNote(doc.contactId, `[Portal] Quote ${doc.number} (${cad(doc.totals.total)}) approved by ${doc.approvedName}.`
+      + `${invoice ? ` Invoice ${invoice.number} created as a draft.` : ''}`);
+  }
+  return { quote: publicDoc('quote', pid, key, doc), invoice, stageName };
+}
+
+async function declineQuote(store, pid, id, { name, reason }) {
+  const r = await vlatest(store, docBase('quote', pid, id));
+  if (!r || r.doc.deleted) throw new HttpError(404, 'This quote is no longer available.');
+  if (r.doc.status === 'approved') throw new HttpError(409, 'This quote has already been approved.');
+  const now = new Date().toISOString();
+  const doc = { ...r.doc, status: 'declined', declinedAt: now, declineReason: clip(reason, 300), approvedName: clip(name, 80) || null, updatedAt: now };
+  const key = await vput(store, docBase('quote', pid, id), doc);
+  if (doc.contactId) {
+    await ghl('POST', `/contacts/${enc(doc.contactId)}/tags`, { tags: [TAG_QUOTE_NO] }).catch(() => {});
+    await ghlNote(doc.contactId, `[Portal] Quote ${doc.number} (${cad(doc.totals.total)}) was declined${doc.declineReason ? `: ${doc.declineReason}` : '.'}`);
+  }
+  return { quote: publicDoc('quote', pid, key, doc) };
+}
+
+async function markQuoteSent(store, pid, id) {
+  const quote = await setDocStatus(store, pid, 'quote', id, 'sent');
+  const p = (await pipelines()).find((x) => x.id === pid);
+  const stageName = await moveLeadForward(pid, quote.oppId, quotedStageOf(p));
+  return { quote, stageName };
+}
+
+/* ---- public quote page (no login; signed link) ---- */
+
+async function quotePublic(store, token) {
+  const t = readQuoteToken(token);
+  const base = docBase('quote', t.p, t.i);
+  let rec = await vlatest(store, base);
+  if (!rec || t.k > rec.key) {
+    const d = await store.get(t.k, { type: 'json' }).catch(() => null);
+    if (d) rec = { key: t.k, doc: d };
+  }
+  if (!rec || rec.doc.deleted) throw new HttpError(404, 'This quote is no longer available.');
+  const q = rec.doc;
+  // First open by the customer: remember it so the business can see the quote was viewed.
+  if (q.status === 'sent' && !q.viewedAt) {
+    try {
+      const doc = { ...q, viewedAt: new Date().toISOString() };
+      rec = { key: await vput(store, base, doc), doc };
+    } catch { /* not important */ }
+  }
+  const owner = await ownerOf(store, t.p);
+  const settings = await invoiceSettings(store, t.p, owner ? owner.n : '');
+  const brand = owner ? publicBrand(owner) : null;
+  return {
+    pid: t.p, id: t.i, key: rec.key,
+    view: {
+      number: q.number, status: q.status, expired: q.status === 'sent' && q.dueDate && q.dueDate < todayYmd(),
+      issueDate: q.issueDate, validUntil: q.dueDate,
+      customer: { name: q.customer.name, address: q.customer.address },
+      lines: q.lines, taxName: q.taxName, taxRate: q.taxRate, totals: q.totals,
+      customFields: q.customFields, notes: q.notes,
+      approvedAt: q.approvedAt, approvedName: q.approvedName, declinedAt: q.declinedAt,
+      business: {
+        name: settings.businessName, address: settings.address, phone: settings.phone, email: settings.email,
+        website: settings.website, taxNumberLabel: settings.taxNumberLabel, taxNumber: settings.taxNumber, terms: settings.terms,
+      },
+      brand: brand ? { color: brand.color, logo: brand.hasLogo ? `${brand.assets}/logo.png?v=${brand.v}` : null } : null,
+      pdf: `/api/invoice-pdf?t=${pdfToken(t.p, rec.key)}`,
+    },
+  };
+}
+
+/* ---- branded PDF (quotes and invoices) ---- */
 
 let pdfLib = null;
 const winAnsi = (s) => String(s == null ? '' : s)
@@ -1026,11 +1197,12 @@ async function brandLogo(store, rec, origin) {
   } catch { return null; }
 }
 
-async function renderInvoicePdf(inv, settings, brandColor, logoBytes) {
+async function renderDocPdf(doc, settings, brandColor, logoBytes) {
   if (!pdfLib) pdfLib = require('pdf-lib');
   const { PDFDocument, StandardFonts, rgb } = pdfLib;
+  const isQuote = doc.kind === 'quote';
   const pdf = await PDFDocument.create();
-  pdf.setTitle(winAnsi(`Invoice ${inv.number}`));
+  pdf.setTitle(winAnsi(`${isQuote ? 'Quote' : 'Invoice'} ${doc.number}`));
   pdf.setAuthor(winAnsi(settings.businessName));
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -1042,6 +1214,8 @@ async function renderInvoicePdf(inv, settings, brandColor, logoBytes) {
   const ink = rgb(0.09, 0.1, 0.12);
   const muted = rgb(0.42, 0.45, 0.5);
   const rule = rgb(0.88, 0.89, 0.91);
+  const green = rgb(0.1, 0.6, 0.3);
+  const red = rgb(0.78, 0.16, 0.16);
   const W = 612; const H = 792; const M = 44;
 
   let page = pdf.addPage([W, H]);
@@ -1074,14 +1248,17 @@ async function renderInvoicePdf(inv, settings, brandColor, logoBytes) {
       logoBottom = y - img.height * s - 10;
     } catch { /* not a PNG: skip */ }
   }
-  right('INVOICE', W - M, y - 22, 26, bold, brand);
-  right(`# ${inv.number}`, W - M, y - 40, 11, bold);
-  const meta = [['Issued', prettyDate(inv.issueDate)], inv.dueDate ? ['Due', prettyDate(inv.dueDate)] : null].filter(Boolean);
+  right(isQuote ? 'QUOTE' : 'INVOICE', W - M, y - 22, 26, bold, brand);
+  right(`# ${doc.number}`, W - M, y - 40, 11, bold);
+  const meta = [['Issued', prettyDate(doc.issueDate)], doc.dueDate ? [isQuote ? 'Valid until' : 'Due', prettyDate(doc.dueDate)] : null].filter(Boolean);
   meta.forEach(([k, v], i) => { right(`${k}: ${v}`, W - M, y - 56 - i * 14, 10, font, muted); });
-  if (inv.status === 'paid') {
-    const stamp = 'PAID';
-    page.drawRectangle({ x: W - M - 74, y: y - 106, width: 74, height: 24, borderColor: rgb(0.1, 0.6, 0.3), borderWidth: 2 });
-    text(stamp, W - M - 74 + (74 - width(stamp, 14, bold)) / 2, y - 99, 14, bold, rgb(0.1, 0.6, 0.3));
+  const stamp = !isQuote && doc.status === 'paid' ? ['PAID', green]
+    : isQuote && doc.status === 'approved' ? ['APPROVED', green]
+      : isQuote && doc.status === 'declined' ? ['DECLINED', red] : null;
+  if (stamp) {
+    const sw = width(stamp[0], 14, bold) + 24;
+    page.drawRectangle({ x: W - M - sw, y: y - 106, width: sw, height: 24, borderColor: stamp[1], borderWidth: 2 });
+    text(stamp[0], W - M - sw + 12, y - 99, 14, bold, stamp[1]);
   }
 
   // From
@@ -1097,18 +1274,18 @@ async function renderInvoicePdf(inv, settings, brandColor, logoBytes) {
   // Bill to + details
   y -= 14;
   const topOfBlocks = y;
-  text('BILL TO', M, y, 8.5, bold, muted);
+  text(isQuote ? 'PREPARED FOR' : 'BILL TO', M, y, 8.5, bold, muted);
   y -= 15;
-  text(inv.customer.name, M, y, 11.5, bold);
+  text(doc.customer.name, M, y, 11.5, bold);
   y -= 14;
-  for (const l of [...wrap(inv.customer.address, 250, 9.5), prettyPhone(inv.customer.phone), inv.customer.email].filter(Boolean)) {
+  for (const l of [...wrap(doc.customer.address, 250, 9.5), prettyPhone(doc.customer.phone), doc.customer.email].filter(Boolean)) {
     text(l, M, y, 9.5, font, muted); y -= 12.5;
   }
   let y2 = topOfBlocks;
-  if (inv.customFields.length) {
+  if (doc.customFields.length) {
     text('DETAILS', 330, y2, 8.5, bold, muted);
     y2 -= 15;
-    for (const f of inv.customFields) {
+    for (const f of doc.customFields) {
       const lines = wrap(f.value, 150, 9.5);
       text(f.label, 330, y2, 9.5, bold);
       lines.forEach((l, i) => right(l, W - M, y2 - i * 12, 9.5, font, ink));
@@ -1128,7 +1305,7 @@ async function renderInvoicePdf(inv, settings, brandColor, logoBytes) {
     y -= 26;
   };
   header();
-  inv.lines.forEach((l, i) => {
+  doc.lines.forEach((l, i) => {
     const lines = wrap(l.desc || '-', cols.qty - cols.desc - 50, 10);
     const h = lines.length * 13 + 10;
     if (y - h < 150) { page = pdf.addPage([W, H]); y = H - 60; header(); }
@@ -1143,18 +1320,19 @@ async function renderInvoicePdf(inv, settings, brandColor, logoBytes) {
 
   // Totals
   y -= 12;
-  const t = inv.totals;
+  const t = doc.totals;
   const rows = [['Subtotal', cad(t.subtotal)]];
   if (t.discount > 0) rows.push(['Discount', `-${cad(t.discount)}`]);
-  if (inv.taxRate > 0) rows.push([`${inv.taxName || 'Tax'} (${inv.taxRate}%)`, cad(t.tax)]);
+  if (doc.taxRate > 0) rows.push([`${doc.taxName || 'Tax'} (${doc.taxRate}%)`, cad(t.tax)]);
   for (const [k, v] of rows) { right(k, 470, y, 10, font, muted); right(v, W - M - 10, y, 10); y -= 16; }
   y -= 12;
   page.drawRectangle({ x: 330, y: y - 12, width: W - M - 330, height: 30, color: brand });
-  text(inv.status === 'paid' ? 'PAID' : 'TOTAL DUE', 342, y - 2, 11, bold, onBrand);
+  const bar = isQuote ? (doc.status === 'approved' ? 'APPROVED TOTAL' : 'QUOTE TOTAL') : (doc.status === 'paid' ? 'PAID' : 'TOTAL DUE');
+  text(bar, 342, y - 2, 11, bold, onBrand);
   right(cad(t.total), W - M - 10, y - 2, 13, bold, onBrand);
   y -= 44;
 
-  // Notes, payment, terms
+  // Notes, payment / approval, terms
   const block = (title, body) => {
     if (!body) return;
     const lines = wrap(body, W - 2 * M, 9.5);
@@ -1163,8 +1341,11 @@ async function renderInvoicePdf(inv, settings, brandColor, logoBytes) {
     for (const l of lines) { text(l, M, y, 9.5); y -= 12; }
     y -= 10;
   };
-  block('NOTES', inv.notes);
-  block('HOW TO PAY', settings.payment);
+  block('NOTES', doc.notes);
+  if (isQuote && doc.status === 'approved') {
+    block('APPROVAL', `Approved by ${doc.approvedName || 'the customer'} on ${prettyDate(String(doc.approvedAt || '').slice(0, 10))}.`);
+  }
+  if (!isQuote) block('HOW TO PAY', settings.payment);
   block('TERMS', settings.terms);
 
   // Footer on every page
@@ -1179,13 +1360,15 @@ async function invoicePdfResponse(store, token, origin) {
   const [payload, sig] = String(token || '').split('.');
   if (!payload || !sig || sign(`inv.${payload}`).slice(0, 24) !== sig) throw new HttpError(404, 'Not found.');
   const { p: pid, k: key } = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-  if (!String(key).startsWith(`inv/${pid}/`)) throw new HttpError(404, 'Not found.');
-  const inv = await store.get(key, { type: 'json' });
-  if (!inv || inv.deleted) throw new HttpError(404, 'This invoice is no longer available.');
-  const owner = (await allUsers(store)).find((x) => !x.admin && x.p === pid) || null;
+  const isQuote = String(key).startsWith(`quo/${pid}/`);
+  if (!isQuote && !String(key).startsWith(`inv/${pid}/`)) throw new HttpError(404, 'Not found.');
+  const doc = await store.get(key, { type: 'json' });
+  if (!doc || doc.deleted) throw new HttpError(404, 'This document is no longer available.');
+  doc.kind = isQuote ? 'quote' : 'invoice';
+  const owner = await ownerOf(store, pid);
   const settings = await invoiceSettings(store, pid, owner ? owner.n : '');
-  const bytes = await renderInvoicePdf(inv, settings, owner && owner.brand ? owner.brand.color : null, await brandLogo(store, owner, origin));
-  const file = `Invoice-${String(inv.number).replace(/[^A-Za-z0-9-]/g, '')}.pdf`;
+  const bytes = await renderDocPdf(doc, settings, owner && owner.brand ? owner.brand.color : null, await brandLogo(store, owner, origin));
+  const file = `${isQuote ? 'Quote' : 'Invoice'}-${String(doc.number).replace(/[^A-Za-z0-9-]/g, '')}.pdf`;
   return {
     statusCode: 200,
     headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${file}"`, 'Cache-Control': 'private, max-age=300' },
@@ -1196,52 +1379,64 @@ async function invoicePdfResponse(store, token, origin) {
 
 /* ---- send through GHL (needs the token's "conversations/message.write" permission) ---- */
 
-async function sendInvoice(store, user, pid, body, origin) {
-  if (!INV_ID_RE.test(String(body.id))) throw new HttpError(400, 'Unknown invoice.');
+async function sendDoc(store, user, pid, body, origin, kind) {
+  const word = KINDS[kind].label.toLowerCase();
+  if (!DOC_ID_RE.test(String(body.id))) throw new HttpError(400, `Unknown ${word}.`);
   const via = body.via === 'sms' ? 'sms' : 'email';
-  const r = await vlatest(store, `inv/${pid}/${body.id}`);
-  if (!r || r.doc.deleted) throw new HttpError(404, 'That invoice no longer exists.');
-  const inv = r.doc;
-  const owner = (await allUsers(store)).find((x) => !x.admin && x.p === pid);
+  const r = await vlatest(store, docBase(kind, pid, body.id));
+  if (!r || r.doc.deleted) throw new HttpError(404, `That ${word} no longer exists.`);
+  const d = r.doc;
+  const owner = await ownerOf(store, pid);
   const settings = await invoiceSettings(store, pid, owner ? owner.n : user.n);
-  const link = `${origin}/api/invoice-pdf?t=${pdfToken(pid, r.key)}`;
-  if (via === 'sms' && !inv.customer.phone) throw new HttpError(400, 'Add the customer\'s phone number first.');
-  if (via === 'email' && !inv.customer.email) throw new HttpError(400, 'Add the customer\'s email first.');
+  const link = kind === 'quote' ? `${origin}/q?t=${quoteToken(pid, d.id, r.key)}` : `${origin}/api/invoice-pdf?t=${pdfToken(pid, r.key)}`;
+  if (via === 'sms' && !d.customer.phone) throw new HttpError(400, 'Add the customer\'s phone number first.');
+  if (via === 'email' && !d.customer.email) throw new HttpError(400, 'Add the customer\'s email first.');
 
-  let contactId = inv.contactId;
+  let contactId = d.contactId;
+  const first = d.customer.name.split(/\s+/)[0];
+  const total = cad(d.totals.total);
   try {
     if (!contactId) {
       const u = await ghl('POST', '/contacts/upsert', {
-        locationId: loc(), name: inv.customer.name, email: inv.customer.email || undefined, phone: inv.customer.phone || undefined,
+        locationId: loc(), name: d.customer.name, email: d.customer.email || undefined, phone: d.customer.phone || undefined,
       });
       contactId = (u.contact && u.contact.id) || u.id;
     }
-    const first = inv.customer.name.split(/\s+/)[0];
-    const total = cad(inv.totals.total);
     if (via === 'sms') {
       await ghl('POST', '/conversations/messages', {
         type: 'SMS', contactId,
-        message: `Hi ${first}, here's your invoice ${inv.number} from ${settings.businessName} for ${total}: ${link}`,
+        message: kind === 'quote'
+          ? `Hi ${first}, here's your quote ${d.number} from ${settings.businessName} for ${total}. Review and approve it here: ${link}`
+          : `Hi ${first}, here's your invoice ${d.number} from ${settings.businessName} for ${total}: ${link}`,
       });
     } else {
       const esc = (s) => String(s || '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
       await ghl('POST', '/conversations/messages', {
         type: 'Email', contactId,
-        subject: `Invoice ${inv.number} from ${settings.businessName}`,
-        html: `<p>Hi ${esc(first)},</p><p>Thank you for choosing ${esc(settings.businessName)}. Your invoice <b>${esc(inv.number)}</b> for <b>${esc(total)}</b> is ready.</p>`
-          + `<p><a href="${esc(link)}">View or download your invoice (PDF)</a></p>`
-          + (settings.payment ? `<p>${esc(settings.payment).replace(/\n/g, '<br>')}</p>` : '')
+        subject: `${KINDS[kind].label} ${d.number} from ${settings.businessName}`,
+        html: `<p>Hi ${esc(first)},</p>`
+          + (kind === 'quote'
+            ? `<p>Thank you for considering ${esc(settings.businessName)}. Your quote <b>${esc(d.number)}</b> for <b>${esc(total)}</b> is ready.</p>`
+              + `<p><a href="${esc(link)}">Review and approve your quote</a></p>`
+            : `<p>Thank you for choosing ${esc(settings.businessName)}. Your invoice <b>${esc(d.number)}</b> for <b>${esc(total)}</b> is ready.</p>`
+              + `<p><a href="${esc(link)}">View or download your invoice (PDF)</a></p>`
+              + (settings.payment ? `<p>${esc(settings.payment).replace(/\n/g, '<br>')}</p>` : ''))
           + `<p>${esc(settings.businessName)}${settings.phone ? `<br>${esc(settings.phone)}` : ''}</p>`,
       });
     }
   } catch (e) {
-    if (e instanceof HttpError && e.status === 502) {
-      return { sent: false, needsSetup: true, link };
-    }
+    if (e instanceof HttpError && e.status === 502) return { sent: false, needsSetup: true, link };
     throw e;
   }
-  const updated = inv.status === 'paid' ? publicInvoice(pid, r.key, inv) : await setInvoiceStatus(store, pid, inv.id, 'sent');
-  return { sent: true, invoice: updated };
+  if (kind === 'quote') {
+    if (d.status === 'draft' || d.status === 'sent') {
+      const { quote, stageName } = await markQuoteSent(store, pid, d.id);
+      return { sent: true, doc: quote, stageName };
+    }
+    return { sent: true, doc: publicDoc(kind, pid, r.key, d) };
+  }
+  const updated = d.status === 'paid' ? publicDoc(kind, pid, r.key, d) : await setDocStatus(store, pid, kind, d.id, 'sent');
+  return { sent: true, doc: updated };
 }
 
 /* ---------------- HTTP plumbing ---------------- */
@@ -1340,6 +1535,29 @@ exports.handler = async (event) => {
   try {
     if (route === 'health' && method === 'GET') {
       return reply(200, { ok: true, node: process.version, storage: store ? store.mode : 'none' });
+    }
+
+    if (route === 'quote-public') {
+      if (!store) throw new HttpError(503, 'Quotes are not available right now.');
+      if (method === 'GET') return reply(200, (await quotePublic(store, q.t)).view);
+      if (method === 'POST') {
+        const body = parseBody(event);
+        const t = readQuoteToken(body.t);
+        const cur = (await quotePublic(store, body.t)).view;
+        if (body.action === 'approve') {
+          const name = clip(body.name, 80);
+          if (name.length < 2) throw new HttpError(400, 'Type your full name to approve.');
+          if (!body.agree) throw new HttpError(400, 'Tick the box to accept the quote.');
+          if (cur.status === 'declined') throw new HttpError(409, 'This quote was declined. Ask for an updated quote.');
+          if (cur.expired) throw new HttpError(409, `This quote has expired. Contact ${cur.business.name || 'us'} for an updated quote.`);
+          await approveQuote(store, t.p, t.i, { name, by: 'customer' });
+        } else if (body.action === 'decline') {
+          await declineQuote(store, t.p, t.i, { name: body.name, reason: body.reason });
+        } else {
+          throw new HttpError(400, 'Unknown action.');
+        }
+        return reply(200, (await quotePublic(store, body.t)).view);
+      }
     }
 
     if (route === 'invoice-pdf' && method === 'GET') {
@@ -1477,22 +1695,46 @@ exports.handler = async (event) => {
     if (route === 'invoices' && method === 'GET') {
       const p = await bookingPipeline(user, q.pipeline);
       const settings = await invoiceSettings(store, p.id, await clientNameFor(store, p.id, user));
-      return reply(200, { pipelineId: p.id, settings, invoices: store ? await listInvoices(store, p.id) : [] });
+      return reply(200, {
+        pipelineId: p.id, settings,
+        invoices: store ? await listDocs(store, p.id, 'invoice') : [],
+        quotes: store ? await listDocs(store, p.id, 'quote') : [],
+      });
     }
 
     if (route === 'invoices' && method === 'POST') {
-      if (!store) throw new HttpError(503, 'Invoices are not available right now.');
+      if (!store) throw new HttpError(503, 'Billing is not available right now.');
       const body = parseBody(event);
       const p = await bookingPipeline(user, body.pipeline);
-      if (body.action === 'save') return reply(200, { invoice: await saveInvoice(store, user, p.id, body) });
-      if (body.action === 'status') return reply(200, { invoice: await setInvoiceStatus(store, p.id, body.id, body.status) });
-      if (body.action === 'delete') { await deleteInvoice(store, p.id, body.id); return reply(200, { deleted: body.id }); }
+      const kind = kindOf(body.kind);
+      if (body.action === 'save') return reply(200, { doc: await saveDoc(store, user, p.id, body, kind) });
+      if (body.action === 'status') {
+        if (kind === 'quote' && body.status === 'approved') {
+          return reply(200, await approveQuote(store, p.id, body.id, { name: clip(body.name, 80) || `${user.n} (marked in portal)`, by: user.u }));
+        }
+        if (kind === 'quote' && body.status === 'declined') return reply(200, await declineQuote(store, p.id, body.id, { reason: body.reason }));
+        if (kind === 'quote' && body.status === 'sent') {
+          const r = await markQuoteSent(store, p.id, body.id);
+          return reply(200, { doc: r.quote, stageName: r.stageName });
+        }
+        return reply(200, { doc: await setDocStatus(store, p.id, kind, body.id, body.status) });
+      }
+      if (body.action === 'convert') {
+        const r = await vlatest(store, docBase('quote', p.id, body.id));
+        if (!r || r.doc.deleted) throw new HttpError(404, 'That quote no longer exists.');
+        if (r.doc.invoiceId) throw new HttpError(409, 'This quote already has an invoice.');
+        const invoice = await invoiceFromQuote(store, p.id, r.doc, user.u);
+        const doc = { ...r.doc, invoiceId: invoice.id, updatedAt: new Date().toISOString() };
+        const key = await vput(store, docBase('quote', p.id, doc.id), doc);
+        return reply(200, { doc: publicDoc('quote', p.id, key, doc), invoice });
+      }
+      if (body.action === 'delete') { await deleteDoc(store, p.id, kind, body.id); return reply(200, { deleted: body.id }); }
       if (body.action === 'settings') {
         const settings = cleanSettings(body.settings || {});
         await vput(store, `invcfg/${p.id}`, settings);
         return reply(200, { settings });
       }
-      if (body.action === 'send') return reply(200, await sendInvoice(store, user, p.id, body, originOf(event)));
+      if (body.action === 'send') return reply(200, await sendDoc(store, user, p.id, body, originOf(event), kind));
       throw new HttpError(400, 'Unknown action.');
     }
 
