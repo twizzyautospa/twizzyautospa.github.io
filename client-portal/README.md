@@ -58,6 +58,18 @@ Every login has a **Leads | Calendar** switch. The calendar is the portal's own 
 - Stored in Netlify Blobs at `bk/<pipelineId>/<YYYY-MM>/<id>`; the browser and the function both remember
   their own recent changes, so storage sync delay is not visible to the person making the change.
 
+## Jobs done, review requests and day-of confirmations
+
+- **Mark job done**: jobs (not estimates or follow-ups) that ended in the last 2 weeks show in a *jobs to wrap up*
+  banner on Leads and Calendar. *Mark job done* confirms the final price, moves the lead to the pipeline's
+  **Job Completed** stage (any stage named Completed / Done), tags `job completed` and adds a note. A GHL
+  "Pipeline Stage Changed → Job Completed" workflow sends the review request.
+- **Next job on the contact**: every booking change re-computes the customer's next upcoming job and writes it to
+  the GHL contact fields **Next Job Date** (date), **Next Job Time**, **Next Job Type**, **Next Job Address**,
+  **Next Job Business** (found by name; skipped until they exist). Cancelling or finishing clears them.
+  A GHL "Custom Date Reminder" workflow on Next Job Date sends the day-of confirmation.
+- Setup prompts for Claude in Chrome (stage, fields, workflows): `docs/ghl-automation-prompts.md`.
+
 ## Managing clients (no code, no redeploy)
 
 Log in as the admin (`leadthru`) and tap the **people icon** in the top bar to open **Clients**:

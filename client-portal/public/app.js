@@ -355,6 +355,7 @@
       <div class="stat hi"><div class="n">${metaCount}</div><div class="l">From Meta</div></div>
       <div class="stat"><div class="n">${newCount}</div><div class="l">This week</div></div>
       <div class="stat" title="${esc(money(total))}"><div class="n">${esc(shortMoney(total))}</div><div class="l">Job value</div></div>`;
+    renderWrapUp();
 
     const count = (id) => shown.filter((o) => o.stageId === id).length;
     $('#chips').innerHTML = stages.map((s) => `
@@ -703,6 +704,21 @@
   }
 
   const allBookings = () => [...state.bk.map.values()].sort((a, b) => a.start.localeCompare(b.start));
+  // Jobs (not estimates or follow-ups) that have ended in the last 2 weeks and aren't marked done.
+  const isJobBooking = (b) => !/estimate|quote|follow|site visit|consult|call back|callback/i.test(b.title || '');
+  const toWrapUp = () => allBookings().filter((b) => isJobBooking(b) && !b.completedAt
+    && new Date(b.end) < new Date() && Date.now() - new Date(b.end) < 14 * 864e5);
+
+  function renderWrapUp() {
+    const list = toWrapUp();
+    const html = list.length ? `<div class="wrapup">
+        <div class="wrapup-h">${icon('check')}<b>${list.length === 1 ? '1 job to wrap up' : `${list.length} jobs to wrap up`}</b>
+          <span>Mark it done to send the review request.</span></div>
+        ${list.slice(0, 5).map((b) => `<button type="button" class="wrapup-row" data-wrap="${esc(b.id)}">
+          <span><b>${esc(b.lead.name)}</b> · ${esc(b.title)} · ${esc(shortWhen(b))}</span><em>Mark done</em></button>`).join('')}
+      </div>` : '';
+    document.querySelectorAll('.wrapup-slot').forEach((el) => { el.innerHTML = html; });
+  }
   const bookingsFor = (oppId) => allBookings().filter((b) => b.oppId === oppId && new Date(b.end) > new Date(Date.now() - 864e5));
   const nextBooking = (oppId) => allBookings().find((b) => b.oppId === oppId && new Date(b.end) > new Date());
 
@@ -748,6 +764,7 @@
   }
 
   function afterBookingsChange() {
+    renderWrapUp();
     const now = Date.now();
     const soon = allBookings().filter((b) => new Date(b.end) > now && new Date(b.start) - now < 7 * 864e5).length;
     const c = $('#calCount');
@@ -763,9 +780,9 @@
     const s = new Date(b.start);
     const past = new Date(b.end) < new Date();
     const where = [b.amount > 0 && money(b.amount), b.address || phonePretty(b.lead.phone)].filter(Boolean).join(' · ');
-    return `<div class="bk-card${past ? ' past' : ''}" role="button" tabindex="0" data-bk="${esc(b.id)}">
+    return `<div class="bk-card${past ? ' past' : ''}${b.completedAt ? ' done' : ''}" role="button" tabindex="0" data-bk="${esc(b.id)}">
       <div class="bk-time"><b>${esc(fmtTime(s))}</b><span>${esc(withDate ? fmtDay(s) : fmtLen(b.minutes))}</span></div>
-      <div class="bk-main"><div class="bk-title">${esc(b.title)} · ${esc(b.lead.name)}</div>
+      <div class="bk-main"><div class="bk-title">${b.completedAt ? icon('check', 'done-i') : ''}${esc(b.title)} · ${esc(b.lead.name)}</div>
         <div class="bk-meta">${esc([withDate ? fmtLen(b.minutes) : '', where].filter(Boolean).join(' · '))}</div></div>
       ${b.lead.phone ? `<a class="call" href="tel:${esc(b.lead.phone)}" aria-label="Call ${esc(b.lead.name)}" data-stop>${icon('phone')}</a>` : ''}
     </div>`;
@@ -941,12 +958,19 @@
           <button class="btn sm" type="button" data-cal="book">${icon('plus')}Book</button>
         </div>
       </div>
+      <div class="wrapup-slot"></div>
       <div class="rev">
         ${revTile(thisWeek ? 'This week' : `Week of ${fmtMD(ws)}`, revenue(ws, addDays(ws, 7)))}
         ${revTile(thisMonth ? 'This month' : m.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }), revenue(m, new Date(m.getFullYear(), m.getMonth() + 1, 1)))}
       </div>
       ${body}`;
+    renderWrapUp();
   }
+
+  document.addEventListener('click', (e) => {
+    const row = e.target.closest('[data-wrap]');
+    if (row) openBookingView(row.dataset.wrap);
+  });
 
   $('#tabs').addEventListener('click', (e) => {
     const bt = e.target.closest('button[data-view]');
@@ -1234,11 +1258,17 @@
         <a class="act${ph ? '' : ' off'}" href="${ph ? `sms:${esc(ph)}` : '#'}">${icon('sms')}Text</a>
         <a class="act${b.address ? '' : ' off'}" href="${b.address ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(b.address)}` : '#'}" target="_blank" rel="noopener">${icon('pin')}Directions</a>
       </div>
-      <div class="sec"><h3>${booker.fresh ? 'Booked! Add it to your phone calendar' : 'Add to my calendar'}</h3>${addCal}</div>
+      ${b.completedAt ? `<div class="done-badge">${icon('check')}Job done · ${esc(fmtDay(new Date(b.completedAt)))}${b.amount > 0 ? ` · ${esc(money(b.amount))}` : ''}</div>`
+        : isJobBooking(b) && new Date(b.end) < new Date() ? `<div class="sec wrap-sec"><h3>How did it go?</h3>
+          <div class="field"><span>Final price</span><div class="price"><input id="doneAmount" inputmode="decimal" placeholder="0" value="${b.amount > 0 ? esc(b.amount) : ''}" aria-label="Final price"></div></div>
+          ${b.oppId ? `<label class="check"><input type="checkbox" id="doneSetValue" checked> Save it as this lead's job value</label>` : ''}
+          <button class="btn" type="button" data-bk-act="done">${icon('check')}Mark job done</button>
+          <p class="hint">${b.oppId ? 'Moves the lead to Job Completed so your review request goes out.' : 'Marks this job done in your calendar.'}</p></div>` : ''}
+      ${new Date(b.end) < new Date() ? '' : `<div class="sec"><h3>${booker.fresh ? 'Booked! Add it to your phone calendar' : 'Add to my calendar'}</h3>${addCal}</div>`}
       <div class="sec bk-actions">
         <button class="btn ghost" type="button" data-bk-act="edit">Change time or details</button>
         ${o && state.openId !== o.id ? '<button class="btn ghost" type="button" data-bk-act="lead">Open lead</button>' : ''}
-        <button class="btn ghost danger" type="button" data-bk-act="cancel">Cancel appointment</button>
+        ${b.completedAt ? '' : '<button class="btn ghost danger" type="button" data-bk-act="cancel">Cancel appointment</button>'}
       </div>`;
   }
 
@@ -1270,6 +1300,33 @@
     } else if (act.dataset.bkAct === 'lead') {
       closeBooker();
       if (findOpp(b.oppId)) setTimeout(() => openSheet(b.oppId), 250);
+    } else if (act.dataset.bkAct === 'done') {
+      const amount = Number(String(($('#doneAmount') || {}).value || '').replace(/[^0-9.]/g, '')) || 0;
+      const setValue = !!($('#doneSetValue') && $('#doneSetValue').checked) && amount > 0;
+      act.disabled = true;
+      try {
+        const r = await api('bookings', {
+          action: 'complete', id: b.id, month: b.month, oppId: b.oppId || undefined, pipeline: state.board.pipeline.id,
+          amount, setValue, tz: tz(),
+        });
+        state.bk.map.set(r.booking.id, r.booking);
+        rememberBooking(state.board.pipeline.id, r.booking.id, r.booking);
+        if (r.opportunity) {
+          const o = findOpp(b.oppId);
+          if (o) {
+            if (o.stageId !== r.opportunity.stageId) o.stageChangedAt = new Date().toISOString();
+            Object.assign(o, { stageId: r.opportunity.stageId, value: r.opportunity.value });
+          }
+        }
+        toast(!b.oppId ? 'Job marked done'
+          : r.stageName ? `Job done · moved to ${r.stageName}. Review request goes out tomorrow.`
+            : 'Job marked done. Add a "Job Completed" stage in GHL to send review requests.', b.oppId && !r.stageName);
+        afterBookingsChange();
+        renderBookingView();
+      } catch (ex) {
+        toast(ex.message, true);
+        act.disabled = false;
+      }
     } else if (act.dataset.bkAct === 'cancel') {
       if (!window.confirm(`Cancel ${b.title} with ${b.lead.name} on ${fmtDay(new Date(b.start))}?`)) return;
       act.disabled = true;

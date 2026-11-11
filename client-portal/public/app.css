@@ -533,4 +533,27 @@ html.client-theme .toast svg{color:#fff}
 .link-btn{display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:6px 0 0;color:var(--accent-text);font-weight:600;font-size:14px;cursor:pointer;align-self:flex-start}
 .link-btn svg{width:15px;height:15px}
 
+/* ---------- jobs to wrap up / done ---------- */
+.wrapup{margin:12px 0 4px;border:1px solid var(--accent);background:var(--accent-soft);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px}
+.wrapup-h{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;padding:0 2px 2px}
+.wrapup-h svg{width:16px;height:16px;color:var(--accent-text)}
+.wrapup-h b{font-family:var(--display);font-size:15px}
+.wrapup-h span{color:var(--muted);font-size:13px}
+.wrapup-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;background:var(--panel);
+  border:1px solid var(--rule);border-radius:10px;padding:10px 12px;cursor:pointer;font-size:14px;min-width:0}
+.wrapup-row span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.wrapup-row span b{color:var(--white)}
+.wrapup-row em{font-style:normal;font-weight:700;color:var(--accent-text);white-space:nowrap}
+.cal-view .wrapup{margin:0 0 12px}
+.wrap-sec .btn{width:100%}
+.wrap-sec .btn svg{width:16px;height:16px}
+.wrap-sec .field{margin-bottom:10px}
+.wrap-sec .check{margin-bottom:10px}
+.wrap-sec .hint{color:var(--muted-2);font-size:12.5px;margin:6px 0 0}
+.done-badge{display:flex;align-items:center;gap:8px;margin:2px 0 12px;padding:12px 14px;border-radius:12px;background:var(--accent-soft-2);
+  color:var(--accent-text);font-weight:700}
+.done-badge svg{width:18px;height:18px}
+.bk-card.done{border-left-color:var(--muted-2)}
+.bk-title .done-i{display:inline-block;width:14px;height:14px;vertical-align:-2px;margin-right:4px;color:var(--accent-text)}
+
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

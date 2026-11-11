@@ -14,7 +14,7 @@
  *   POST /api/clients  {action:'save'|'remove', ...}   (admin) add / edit / remove a client
  *   GET  /api/asset/<slug>/<file>         client logo, app icons and manifest (public, random slug)
  *   GET  /api/bookings?months=YYYY-MM,...[&pipeline=<id>]   portal calendar appointments
- *   POST /api/bookings {action:'save'|'cancel', ...}         book / change / cancel an appointment
+ *   POST /api/bookings {action:'save'|'cancel'|'complete', ...}   book / change / cancel / mark a job done
  *   POST /api/meta     {id, meta:'yes'|'no'}  mark whether a lead came from Meta (GHL tags "meta lead" / "not meta lead")
  *   GET  /api/ics?t=<signed token>        one appointment as an .ics file (add to phone calendar)
  *   GET  /api/health
@@ -596,6 +596,69 @@ async function ghlNote(contactId, text) {
   try { await ghl('POST', `/contacts/${enc(contactId)}/notes`, { body: text }); return true; } catch { return false; }
 }
 
+/* ---- next job on the GHL contact (drives the day-of confirmation workflow) ----
+ * Contact custom fields, created once in GHL: Next Job Date (date), Next Job Time,
+ * Next Job Type, Next Job Address, Next Job Business (text). Matched by name; any
+ * that don't exist yet are skipped. They always hold the contact's next upcoming,
+ * not-yet-done job, and are cleared when there is none.
+ */
+const JOB_FIELDS = {
+  date: 'next job date', time: 'next job time', type: 'next job type', address: 'next job address', business: 'next job business',
+};
+const TAG_JOB_DONE = 'job completed';
+let jobFieldCache = { at: 0, map: {} };
+async function jobFields() {
+  if (Date.now() - jobFieldCache.at < 5 * 60e3) return jobFieldCache.map;
+  const map = {};
+  try {
+    const r = await ghl('GET', `/locations/${enc(loc())}/customFields?model=contact`);
+    for (const f of r.customFields || []) {
+      const n = String(f.name || '').trim().toLowerCase();
+      for (const [k, name] of Object.entries(JOB_FIELDS)) if (n === name) map[k] = f.id;
+    }
+  } catch { /* try again on the next booking */ }
+  // Local dry runs: pretend the fields exist so the would-be update shows in the log.
+  if (process.env.PORTAL_DRY_WRITES && !map.date) Object.keys(JOB_FIELDS).forEach((k) => { map[k] = `dry_${k}`; });
+  // Not set up yet: look again in a minute so new fields are picked up quickly.
+  jobFieldCache = { at: map.date ? Date.now() : Date.now() - 4 * 60e3, map };
+  return map;
+}
+
+const ymdIn = (iso, zone) => new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+const timeIn = (iso, zone) => new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
+
+async function clientNameFor(store, pid, user) {
+  if (!user.admin) return user.n;
+  const owner = (await allUsers(store)).find((x) => !x.admin && x.p === pid);
+  return owner ? owner.n : '';
+}
+
+async function syncNextJob(store, pid, contactId, tz, business) {
+  if (!contactId) return true;
+  const f = await jobFields();
+  if (!Object.keys(f).length) return true;
+  const zone = safeTz(tz || 'America/Toronto');
+  const now = new Date();
+  const months = [0, 1, 2, 3].map((k) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + k, 1)).toISOString().slice(0, 7));
+  const next = (await listBookings(store, pid, months))
+    .find((b) => b.contactId === contactId && !b.completedAt && new Date(b.end) > now) || null;
+  const values = next
+    ? { date: ymdIn(next.start, zone), time: timeIn(next.start, zone), type: next.title, address: next.address || '', business: business || '' }
+    : { date: '', time: '', type: '', address: '', business: '' };
+  const fields = Object.entries(values).filter(([k]) => f[k]).map(([k, v]) => ({ id: f[k], field_value: v }));
+  try {
+    await ghl('PUT', `/contacts/${enc(contactId)}`, { customFields: fields });
+    return true;
+  } catch {
+    if (next || !f.date) return false;
+    // Some accounts reject an empty date: park it in the past so no reminder can fire.
+    try {
+      await ghl('PUT', `/contacts/${enc(contactId)}`, { customFields: fields.map((x) => (x.id === f.date ? { ...x, field_value: '2000-01-01' } : x)) });
+      return true;
+    } catch { return false; }
+  }
+}
+
 async function saveBooking(store, user, body) {
   // A booking is either for a GHL lead (oppId) or for someone typed in by hand (manual).
   const manual = !body.oppId;
@@ -647,6 +710,7 @@ async function saveBooking(store, user, body) {
     address: String(body.address || '').trim().slice(0, 200),
     notes: String(body.notes || '').trim().slice(0, 1000),
     amount,
+    completedAt: (prev && prev.completedAt) || undefined,
     createdBy: (prev && prev.createdBy) || user.u,
     createdAt: (prev && prev.createdAt) || now,
     updatedAt: now,
@@ -678,6 +742,7 @@ async function saveBooking(store, user, body) {
   if (isNew && rec.contactId) {
     try { await ghl('POST', `/contacts/${enc(rec.contactId)}/tags`, { tags: [BOOKED_TAG] }); } catch { synced = false; }
   }
+  if (rec.contactId) synced = (await syncNextJob(store, pid, rec.contactId, body.tz, await clientNameFor(store, pid, user))) && synced;
   return { booking: publicBooking(rec), opportunity, synced, stageFailed };
 }
 
@@ -690,8 +755,52 @@ async function cancelBooking(store, user, body) {
   const rec = (r && r.get(body.id) && r.get(body.id).rec) || await store.get(key, { type: 'json' }).catch(() => null);
   await store.delete(key);
   noteRecentBooking(pid, body.id, null);
-  const synced = await ghlNote(o && o.contactId, `[Portal · ${user.n}] Appointment cancelled${rec ? `: ${rec.title} on ${whenText(rec, body.tz)}` : ''}`);
+  let synced = await ghlNote(o && o.contactId, `[Portal · ${user.n}] Appointment cancelled${rec ? `: ${rec.title} on ${whenText(rec, body.tz)}` : ''}`);
+  if (o && o.contactId) synced = (await syncNextJob(store, pid, o.contactId, body.tz, await clientNameFor(store, pid, user))) && synced;
   return { cancelled: body.id, synced };
+}
+
+// "How did it go?" → mark the job done: final price, lead to the Job Completed stage,
+// tag "job completed" (GHL's review-request workflow starts from the stage change).
+async function completeBooking(store, user, body) {
+  if (!BK_ID_RE.test(String(body.id)) || !MONTH_RE.test(String(body.month || ''))) throw new HttpError(400, 'Unknown appointment.');
+  const o = body.oppId ? await loadOpportunity(user, body.oppId) : null;
+  const pid = o ? o.pipelineId : (await bookingPipeline(user, body.pipeline)).id;
+  const key = `bk/${pid}/${body.month}/${body.id}`;
+  const recent = recentBookings.get(pid);
+  const prev = (recent && recent.get(body.id) && recent.get(body.id).rec) || await store.get(key, { type: 'json' }).catch(() => null);
+  if (!prev) throw new HttpError(404, 'That appointment is not saved yet. Try again in a minute.');
+  const amount = body.amount === undefined || body.amount === null || body.amount === ''
+    ? prev.amount || 0 : Math.round(Math.min(1e7, Math.max(0, Number(body.amount) || 0)) * 100) / 100;
+  const now = new Date().toISOString();
+  const rec = { ...prev, amount, completedAt: now, updatedAt: now };
+  await store.setJSON(key, rec);
+  noteRecentBooking(pid, rec.id, rec);
+
+  let opportunity = null;
+  let stageName = null;
+  let synced = true;
+  if (o) {
+    const p = (await pipelines()).find((x) => x.id === pid);
+    const done = p && p.stages.find((st) => /complet|\bdone\b/i.test(st.name));
+    stageName = done ? done.name : null;
+    const patch = {};
+    if (done && done.id !== o.pipelineStageId) Object.assign(patch, { pipelineId: pid, pipelineStageId: done.id });
+    if (body.setValue && amount > 0) patch.monetaryValue = amount;
+    if (Object.keys(patch).length) {
+      try {
+        const r = await ghl('PUT', `/opportunities/${enc(o.id)}`, patch);
+        opportunity = slim({ ...o, ...(r.opportunity || {}), ...patch, contact: o.contact, ...(patch.pipelineStageId ? { lastStageChangeAt: now } : {}) });
+      } catch { synced = false; }
+    }
+    if (o.contactId) {
+      try { await ghl('POST', `/contacts/${enc(o.contactId)}/tags`, { tags: [TAG_JOB_DONE] }); } catch { synced = false; }
+      const price = amount > 0 ? ` ($${amount.toLocaleString('en-US')})` : '';
+      synced = (await ghlNote(o.contactId, `[Portal · ${user.n}] Job done: ${rec.title}${price} on ${whenText(rec, body.tz)}`)) && synced;
+      synced = (await syncNextJob(store, pid, o.contactId, body.tz, await clientNameFor(store, pid, user))) && synced;
+    }
+  }
+  return { booking: publicBooking(rec), opportunity, stageName, synced };
 }
 
 /* ---------------- HTTP plumbing ---------------- */
@@ -910,6 +1019,7 @@ exports.handler = async (event) => {
       const body = parseBody(event);
       if (body.action === 'save') return reply(200, await saveBooking(store, user, body));
       if (body.action === 'cancel') return reply(200, await cancelBooking(store, user, body));
+      if (body.action === 'complete') return reply(200, await completeBooking(store, user, body));
       throw new HttpError(400, 'Unknown action.');
     }
 
