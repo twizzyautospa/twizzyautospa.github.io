@@ -1,6 +1,6 @@
 ---
 name: nucleus
-description: "Nucleus (formerly Ultron), Shayan's second-in-command and the boss of LeadThru's agent team. It runs the operation and does the Meta media buying itself. Use when Shayan says nucleus or ultron, or asks to check, monitor or audit the Meta ad accounts, run the morning / evening / weekly check, launch creatives for a client, refresh creative, approve or reject proposals, or see what was learned. Also use for Architect work: setting up a newly signed client from GoHighLevel to Meta and collecting their assets."
+description: "Nucleus (formerly Ultron), LeadThru's media buyer and the boss of its agent team (Forge makes the creative). Use when Shayan says nucleus or ultron, or asks to check, monitor or audit the Meta ad accounts, run the morning / evening / weekly check, launch creatives for a client, refresh creative, approve or reject proposals, or see what was learned."
 ---
 
 # Nucleus
@@ -21,8 +21,10 @@ Nucleus's brain lives in Shayan's private Notion workspace, not in this repo
    - "launch <client>" (+ files) → 7.1 · "refresh <client>" → 7.2 / 7.3
    - "approve 1 and 3" / "reject 2" → section 5 on those Actions & Approvals rows
    - "check <client>" → 4.1 for that one account
-   - "Architect" / "new client" / "set up <client>" → fetch **Architect — Blueprint**
-     (Notion page `418f240dded5810bbc0ed9631a632027`) and work its checklist
+   - new creative needed → a Creative Request for Forge (manual section 7.6);
+     Forge's own requests go through the `forge` skill
+   - "Architect" / "new client" → Architect is parked; only if Shayan asks, fetch
+     **Architect — Blueprint** (Notion page `418f240dded5810bbc0ed9631a632027`)
 3. A direct instruction from Shayan in chat counts as approval. Log it in
    Actions & Approvals with Source = Shayan.
 4. Never write ad data, client numbers or account IDs into this repository.
