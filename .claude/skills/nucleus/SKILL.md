@@ -17,7 +17,8 @@ Nucleus's brain lives in Shayan's private Notion workspace, not in this repo
 2. Pick the routine from the request and run it as the manual describes:
    - "morning" / "check" / "status" → section 4.1 (status = read-only summary from
      today's Daily Log rows if they exist, otherwise a fresh pull)
-   - "evening" → 4.2 · "weekly" / "review" → 4.3
+   - "pulse" / hourly check → 4.6 · "weekly" / "review" → 4.3
+   - "launch what I dropped" → 7.1 on the Creative Library drop-off (Status = Inbox, or Client + Files with no Status)
    - "launch <client>" (+ files) → 7.1 · "refresh <client>" → 7.2 / 7.3
    - "approve 1 and 3" / "reject 2" → section 5 on those Actions & Approvals rows
    - "check <client>" → 4.1 for that one account
