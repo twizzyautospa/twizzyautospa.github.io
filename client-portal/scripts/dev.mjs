@@ -7,7 +7,10 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
-const { handler } = createRequire(import.meta.url)(join(ROOT, 'netlify/functions/api.js'));
+const require = createRequire(import.meta.url);
+// PORTAL_MOCK_GHL=1: use the fictional demo business instead of the real GoHighLevel account.
+if (process.env.PORTAL_MOCK_GHL) require(join(ROOT, 'scripts/mock-ghl.cjs')).install();
+const { handler } = require(join(ROOT, 'netlify/functions/api.js'));
 const TYPES = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png',
   '.webmanifest': 'application/manifest+json', '.txt': 'text/plain' };
 const PORT = Number(process.env.PORT || 8888);

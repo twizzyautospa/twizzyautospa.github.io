@@ -175,4 +175,12 @@ PORTAL_LOCAL_STORE=./.local-store GHL_TOKEN=... GHL_LOCATION_ID=... SESSION_SECR
 ```
 
 `PORTAL_LOCAL_STORE` keeps clients, logos and bookings in a local folder instead of Netlify Blobs.
+
+**Demo mode** (no real data): `PORTAL_MOCK_GHL=1` swaps GoHighLevel for an in-memory fictional business,
+"Northshore Landscaping" (`scripts/mock-ghl.cjs`), so the portal can be demoed or screen-recorded safely:
+
+```bash
+PORTAL_MOCK_GHL=1 PORTAL_LOCAL_STORE=./.demo-store GHL_TOKEN=demo GHL_LOCATION_ID=demo SESSION_SECRET=demo \
+  PORTAL_USERS='[]' node scripts/dev.mjs
+```
 Add `PORTAL_DRY_WRITES=1` to read real GHL data but skip every change to GHL (stage moves, notes, tags).
