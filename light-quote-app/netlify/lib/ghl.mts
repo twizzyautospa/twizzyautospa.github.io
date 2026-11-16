@@ -159,6 +159,29 @@ export async function updateOpportunity(id: string, change: { stageId?: string; 
   await request("PUT", `/opportunities/${encodeURIComponent(id)}`, body);
 }
 
+export interface Pipeline {
+  id: string;
+  name: string;
+  stages: { id: string; name: string }[];
+}
+
+/** Every pipeline in the CRM account with its stages in board order, so the owner can pick one for an installer. */
+export async function listPipelines(): Promise<Pipeline[]> {
+  const data = await request("GET", `/opportunities/pipelines?locationId=${encodeURIComponent(location())}`);
+  const pipelines: any[] = Array.isArray(data?.pipelines) ? data.pipelines : [];
+  return pipelines
+    .map((raw) => ({
+      id: String(raw.id ?? ""),
+      name: String(raw.name ?? "").trim(),
+      stages: (Array.isArray(raw.stages) ? [...raw.stages] : [])
+        .sort((a: any, b: any) => (Number(a.position) || 0) - (Number(b.position) || 0))
+        .map((stage: any) => ({ id: String(stage.id ?? ""), name: String(stage.name ?? "").trim() }))
+        .filter((stage) => stage.id),
+    }))
+    .filter((pipeline) => pipeline.id)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export async function addNote(contactId: string, body: string): Promise<void> {
   await request("POST", `/contacts/${encodeURIComponent(contactId)}/notes`, { body: body.slice(0, 4000) });
 }

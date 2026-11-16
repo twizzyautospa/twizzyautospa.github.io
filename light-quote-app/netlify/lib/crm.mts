@@ -14,7 +14,7 @@ import { buildQuote, normalizeSelections } from "./pricing.mts";
 import { newId, newToken } from "./util.mts";
 import type { CrmConfig, LeadCrm } from "./crm-config.mts";
 
-export { cleanCrmConfig, type CrmConfig, type LeadCrm } from "./crm-config.mts";
+export { cleanCrmConfig, suggestStages, type CrmConfig, type LeadCrm } from "./crm-config.mts";
 
 /**
  * Two-way sync between an installer's leads and their CRM pipeline.

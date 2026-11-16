@@ -88,7 +88,7 @@ curl -X POST https://YOUR-SITE/api/inbound/leads \
 
 ## GoHighLevel sync
 
-An installer can be linked to one pipeline in the platform's GoHighLevel location. The link is set by the platform owner (the `crm` column on the installer), never by the installer.
+An installer can be linked to one pipeline in the platform's GoHighLevel location. The link is set by the platform owner, never by the installer: in the admin console open **Installers → Manage → GoHighLevel pipeline**, pick the pipeline, check the stage suggested for each step and save. It is stored in the `crm` column on the installer.
 
 - **Out, as it happens:** a new request upserts the contact (matched by phone or email) and creates an opportunity in the first stage, or links to the opportunity that contact already has in the pipeline. Saving a quote, the customer accepting or declining, and status changes in the dashboard move the opportunity to the matching stage and set its value. Notes are added to the contact.
 - **In, every 15 minutes:** opportunities moved to the booked, completed or lost stage update the linked lead. Jobs booked in the pipeline that did not start as a quote request are added to the dashboard, from the moment the link was created onward.

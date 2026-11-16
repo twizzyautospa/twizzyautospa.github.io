@@ -162,6 +162,10 @@ function openManage(id) {
         ${i.canSignIn ? "" : html`<p class="notice notice-warn">This installer cannot sign in yet. Set a password for them below.</p>`}
         <div><button type="submit" class="btn btn-secondary">Save details</button></div>
       </form>
+      <form class="card card-flat stack" id="crm-link" data-id="${i.id}" novalidate>
+        <div class="section-title" style="margin:0">GoHighLevel pipeline</div>
+        <div id="crm-link-body" class="stack"><p class="small muted">Loading pipelines…</p></div>
+      </form>
       <div class="card card-flat stack">
         <div class="section-title" style="margin:0">Access</div>
         <p class="small muted">${i.status === "active" ? "Pausing stops their quote link and sign-in. Their data is kept." : "This installer is paused. Their quote link and sign-in are off."}</p>
@@ -177,6 +181,55 @@ function openManage(id) {
       </div>
     </div>`);
   dialog.showModal();
+  loadCrmLink(i);
+}
+
+/* ---------- link an installer to a CRM pipeline ---------- */
+const CRM_STAGES = [
+  ["new", "New request"],
+  ["quoted", "Quote sent"],
+  ["booked", "Booked"],
+  ["completed", "Job completed"],
+  ["lost", "Lost or declined"],
+];
+let pipelinesCache = null;
+
+async function loadCrmLink(installer) {
+  const body = $("#crm-link-body");
+  try {
+    if (!pipelinesCache) ({ pipelines: pipelinesCache } = await api("admin/crm-pipelines"));
+  } catch (error) {
+    if (body?.isConnected) setHtml(body, html`<p class="notice notice-warn">${error.message}</p>`);
+    return;
+  }
+  if (!body?.isConnected || $("#crm-link")?.dataset.id !== installer.id) return;
+  renderCrmLink(installer, installer.crm?.pipelineId ?? "");
+}
+
+function renderCrmLink(installer, pipelineId) {
+  const pipeline = pipelinesCache.find((p) => p.id === pipelineId);
+  const saved = installer.crm?.pipelineId === pipelineId ? installer.crm : null;
+  const chosen = saved?.stages ?? pipeline?.suggested ?? {};
+  const option = (value, label, current) => html`<option value="${value}" ${raw(value === current ? "selected" : "")}>${label}</option>`;
+  setHtml($("#crm-link-body"), html`
+    <p class="small muted">${installer.crm
+      ? "Linked. New requests, quotes and bookings go into this pipeline, and jobs moved in the CRM update here."
+      : "Not linked. Pick this installer's pipeline to sync their leads both ways."}</p>
+    <label class="field"><span>Pipeline</span>
+      <select name="pipelineId" id="crm-pipeline">
+        ${option("", "Not linked", pipelineId)}${pipelinesCache.map((p) => option(p.id, p.name, pipelineId))}
+      </select></label>
+    ${pipeline ? html`
+      <div class="form-grid">
+        ${CRM_STAGES.map(([key, label]) => html`
+          <label class="field"><span>${label}</span>
+            <select name="stage-${key}" required>
+              ${option("", "Choose a stage", chosen[key] ?? "")}${pipeline.stages.map((stage) => option(stage.id, stage.name, chosen[key] ?? ""))}
+            </select></label>`)}
+      </div>
+      <label class="row"><input type="checkbox" name="importBooked" ${raw(saved?.importBooked === false ? "" : "checked")} style="width:20px;height:20px"> <span>Also bring in jobs booked in the CRM that did not start as a quote request</span></label>
+      <p class="small muted">Only changes made after linking are synced, so old history is not copied in.</p>` : ""}
+    <div><button type="submit" class="btn btn-secondary">${pipeline ? "Save CRM link" : installer.crm ? "Remove CRM link" : "Save"}</button></div>`);
 }
 
 /** Re-open the manage dialog with fresh data after a save. */
@@ -334,11 +387,36 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  if (event.target.id === "crm-pipeline") {
+    const installer = installers.find((x) => x.id === $("#crm-link").dataset.id);
+    if (installer) renderCrmLink(installer, event.target.value);
+  }
   if (event.target.id === "f-installer") { leadFilter.installer = event.target.value; showLeads(); }
   if (event.target.id === "f-status") { leadFilter.status = event.target.value; showLeads(); }
 });
 
 document.addEventListener("submit", async (event) => {
+  if (event.target.id === "crm-link") {
+    event.preventDefault();
+    const form = event.target;
+    const data = new FormData(form);
+    const installer = installers.find((x) => x.id === form.dataset.id);
+    const pipelineId = data.get("pipelineId");
+    let crm = null;
+    if (pipelineId) {
+      const stages = Object.fromEntries(CRM_STAGES.map(([key]) => [key, data.get(`stage-${key}`) || ""]));
+      if (Object.values(stages).some((id) => !id)) return toast("Choose a stage for each step", "error");
+      crm = { provider: "ghl", pipelineId, stages, importBooked: data.get("importBooked") === "on" };
+      if (installer?.crm?.pipelineId === pipelineId) crm.since = installer.crm.since;
+    }
+    await busy(form.querySelector('button[type="submit"]'), async () => {
+      await api(`admin/installers/${form.dataset.id}`, { method: "PATCH", body: { crm } });
+      toast(crm ? "CRM link saved" : "CRM link removed");
+      await showInstallers();
+      openManageRefresh(form.dataset.id);
+    });
+    return;
+  }
   if (event.target.id === "installer-edit") {
     event.preventDefault();
     const form = event.target;

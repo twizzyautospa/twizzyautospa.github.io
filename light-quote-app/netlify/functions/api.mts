@@ -17,7 +17,8 @@ import {
   type Session,
 } from "../lib/auth.mts";
 import { previewProvider } from "../lib/ai.mts";
-import { cleanCrmConfig, crmActive, pullAll, pushLeadToCrm } from "../lib/crm.mts";
+import { cleanCrmConfig, crmActive, pullAll, pushLeadToCrm, suggestStages } from "../lib/crm.mts";
+import { ghlReady, listPipelines } from "../lib/ghl.mts";
 import { getSetting, j, setSetting, sql } from "../lib/db.mts";
 import { parseImageDataUrl, readFile } from "../lib/files.mts";
 import {
@@ -489,6 +490,13 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
     return json({ results: await pullAll(rows.map(toInstaller)), crm: await crmSummary() });
   }
 
+  // The CRM account's pipelines and stages, with a suggested stage for each status, for linking an installer.
+  if (resource === "crm-pipelines" && req.method === "GET") {
+    if (!ghlReady()) fail(400, "The GoHighLevel token is not set on this site");
+    const pipelines = await listPipelines().catch((err) => fail(502, `Could not read the pipelines: ${err.message}`));
+    return json({ pipelines: pipelines.map((pipeline) => ({ ...pipeline, suggested: suggestStages(pipeline.stages) })) });
+  }
+
   if (resource === "platform" && req.method === "PUT") {
     const body = await readJson(req);
     const name = str(body.name, 40);
@@ -522,6 +530,7 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
         lastLeadAt: row.last_lead_at ? new Date(row.last_lead_at).toISOString() : null,
         quoteLink: `${ctx.origin}/q/${row.slug}`,
         crmLinked: cleanCrmConfig(row.crm) !== null,
+        crm: cleanCrmConfig(row.crm),
       })),
     });
   }
