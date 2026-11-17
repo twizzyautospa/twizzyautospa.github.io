@@ -7,6 +7,9 @@ let data = null;
 let view = "";        // which image is showing: a colour key, or "before"
 let editing = false;  // "change what's lit" panel open
 let pollTimer = 0;
+let shown = "";       // the last colour that was actually on screen, kept behind the "making" message
+let asked = "";       // a colour the customer tapped that is being made
+let notice = "";      // one-line message under the viewer
 
 async function load() {
   data = await api(`public/lead/${encodeURIComponent(token)}`);
@@ -54,22 +57,37 @@ function viewer() {
       <p class="notice notice-info">${data.installer.companyName} will send your lighting preview together with your quote.</p>`;
   }
 
-  if (!view || (view !== "before" && !previews.colors[view])) {
-    view = previews.colors[lead.selections.color] ? lead.selections.color : ready[0];
+  // Only the chosen colour is made up front. Another colour is made when the customer taps it.
+  const making = (c) => previews.making.includes(c);
+  const canMake = (c) => previews.available.includes(c);
+  if (view && view !== "before" && !previews.colors[view] && !making(view)) {
+    // The look they asked for did not come back: say so once, and return to one that exists.
+    if (asked === view) notice = `We could not make the ${COLOR_LABELS[view].toLowerCase()} look just now. ${canMake(view) ? "Tap it to try again." : ""}`;
+    view = "";
   }
-  const src = view === "before" ? photos[0] : previews.colors[view];
-  const alt = view === "before" ? "Your home as it is today" : `Your home with ${COLOR_LABELS[view].toLowerCase()} lights`;
+  if (!view) view = previews.colors[lead.selections.color] ? lead.selections.color : ready[0];
+  if (view !== "before" && previews.colors[view]) shown = view;
+  const waiting = view !== "before" && making(view);
+  const src = view === "before" ? photos[0] : previews.colors[view] || previews.colors[shown] || photos[0];
+  const alt = view === "before" ? "Your home as it is today" : `Your home with ${COLOR_LABELS[waiting ? shown : view].toLowerCase()} lights`;
+  const more = COLORS.some((c) => !previews.colors[c] && canMake(c));
   return html`
     <section class="viewer">
-      <div class="viewer-stage">
+      <div class="viewer-stage ${waiting ? "is-waiting" : ""}">
         <img src="${src}" alt="${alt}">
-        <span class="viewer-tag">${view === "before" ? "Before" : "Illustration only"}</span>
+        ${waiting ? html`
+          <div class="viewer-wait" role="status">
+            <div class="lights" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+            <strong>Hanging the ${COLOR_LABELS[view].toLowerCase()} lights…</strong>
+            <span>About half a minute. Keep this page open.</span>
+          </div>` : html`<span class="viewer-tag">${view === "before" ? "Before" : "Illustration only"}</span>`}
       </div>
       <div class="viewer-tabs" role="group" aria-label="Choose a look">
-        ${COLORS.map((c) => html`<button type="button" data-view="${c}" aria-pressed="${String(view === c)}" ${raw(previews.colors[c] ? "" : "disabled")}>${COLOR_LABELS[c]}</button>`)}
+        ${COLORS.map((c) => html`<button type="button" data-view="${c}" aria-pressed="${String(view === c)}" ${raw(previews.colors[c] || making(c) || canMake(c) ? "" : "disabled")}>${COLOR_LABELS[c]}</button>`)}
         ${photos.length ? html`<button type="button" data-view="before" aria-pressed="${String(view === "before")}">Before</button>` : ""}
       </div>
-    </section>`;
+    </section>
+    ${notice ? html`<p class="notice notice-warn" role="status">${notice}</p>` : more ? html`<p class="small muted center">Tap another colour to see it on your home.</p>` : ""}`;
 }
 
 function editPanel() {
@@ -234,7 +252,7 @@ function render() {
 function schedulePoll() {
   clearTimeout(pollTimer);
   const { lead } = data;
-  const waitingPreview = lead.previews.status === "pending";
+  const waitingPreview = lead.previews.status === "pending" || lead.previews.making.length > 0;
   const waitingQuote = lead.status === "new";
   if (!waitingPreview && !waitingQuote) return;
   pollTimer = setTimeout(async () => {
@@ -253,7 +271,20 @@ function schedulePoll() {
 $("#main").addEventListener("click", async (event) => {
   const tab = event.target.closest("[data-view]");
   if (tab) {
-    view = tab.dataset.view;
+    const wanted = tab.dataset.view;
+    const { previews } = data.lead;
+    notice = "";
+    view = wanted;
+    // A colour nobody has looked at yet is made now, the first time it is tapped.
+    if (wanted !== "before" && !previews.colors[wanted] && !previews.making.includes(wanted) && previews.available.includes(wanted)) {
+      asked = wanted;
+      try {
+        data = await api(`public/lead/${encodeURIComponent(token)}/preview`, { method: "POST", body: { color: wanted } });
+      } catch (error) {
+        notice = error.message;
+        view = "";
+      }
+    }
     return render();
   }
   if (event.target.id === "edit-open") { editing = true; return render(); }
@@ -262,10 +293,11 @@ $("#main").addEventListener("click", async (event) => {
     return busy(event.target, async () => {
       data = await api(`public/lead/${encodeURIComponent(token)}/regenerate`, {
         method: "POST",
-        body: { service: $("#edit-service").value, scope: $("#edit-scope").value },
+        body: { service: $("#edit-service").value, scope: $("#edit-scope").value, color: COLORS.includes(view) ? view : data.lead.selections.color },
       });
       editing = false;
       view = "";
+      notice = "";
       render();
     });
   }

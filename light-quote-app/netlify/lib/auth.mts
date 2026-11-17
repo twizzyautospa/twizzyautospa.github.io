@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { getSetting, sql } from "./db.mts";
 import { env, fail, sha256, toUsername } from "./util.mts";
@@ -52,6 +52,29 @@ export async function getSecret(): Promise<string> {
   const stored = await getSetting<string>("session_secret");
   if (!stored) fail(500, "Could not initialise sessions");
   return (secretCache = stored);
+}
+
+/** Encrypt a small secret for storage. The key is derived from the server secret, so a database dump alone is not enough to read it. */
+export async function seal(plain: string): Promise<string> {
+  const key = createHash("sha256").update(`seal:${await getSecret()}`).digest();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const body = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  return `v1.${iv.toString("base64url")}.${cipher.getAuthTag().toString("base64url")}.${body.toString("base64url")}`;
+}
+
+/** Reverse of `seal`. Returns "" for anything that was not sealed with this server's secret. */
+export async function unseal(sealed: string | null | undefined): Promise<string> {
+  const [version, iv, tag, body] = String(sealed ?? "").split(".");
+  if (version !== "v1" || !iv || !tag || !body) return "";
+  try {
+    const key = createHash("sha256").update(`seal:${await getSecret()}`).digest();
+    const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64url"));
+    decipher.setAuthTag(Buffer.from(tag, "base64url"));
+    return Buffer.concat([decipher.update(Buffer.from(body, "base64url")), decipher.final()]).toString("utf8");
+  } catch {
+    return "";
+  }
 }
 
 export async function sign(value: string): Promise<string> {

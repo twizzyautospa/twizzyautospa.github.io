@@ -66,7 +66,13 @@ The quiz asks what the customer needs: lights supplied, installed and taken down
 
 ## Lighting previews
 
-The first photo is sent to an image model with a prompt built only from the customer's choices (which areas, how much of the roofline), once per colour. The customer can change the lit areas twice; the installer can remake previews any time. Each lead with a photo makes three images, so preview cost scales with lead volume. Each installer has a daily request cap in Settings, and each device is limited to six requests an hour.
+The first photo is sent to an image model with a prompt built only from the customer's choices (which areas, how much of the roofline).
+
+**One image per request.** Only the customer's chosen colour is made up front. Each other colour is made the first time someone taps it, on the customer's page or in the installer's lead view, so pictures nobody looks at are never paid for. The customer can change the lit areas twice (the look they are viewing is remade); the installer can remake the existing previews any time. A failed colour can be retried once.
+
+**Who pays.** Each installer can have their own Google AI key, pasted by them in Settings or by the owner under Installers → Manage. Their previews then go straight to Google on that key and Google bills them. The key is checked with Google before saving, stored encrypted with the server secret, and never sent back to a browser (only its last four characters are shown). Installers without a key use the platform's allowance (Netlify AI Gateway, or `GEMINI_API_KEY`) unless the owner unticks that on the Overview, in which case they get no previews. Google's image models have no free tier, so a key needs billing switched on.
+
+**Cost.** The owner picks the picture quality on the Overview: Standard (`gemini-3.1-flash-image`, about 7¢ an image) or Economy (`gemini-3.1-flash-lite-image`, about 3¢). `PREVIEW_MODEL` overrides both. Images are counted per installer per month (`preview_usage`), with a separate count of those that ran on the platform's allowance. Each installer has a daily request cap in Settings, and each device is limited to six requests an hour.
 
 ## Connecting other systems
 

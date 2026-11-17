@@ -202,6 +202,15 @@ h1[tabindex="-1"]:focus { outline: none; }
 }
 .viewer-tabs button[aria-pressed="true"] { background: #fff; color: var(--night); border-color: #fff; }
 .viewer-tabs button:disabled { opacity: 0.4; cursor: not-allowed; }
+.viewer-stage.is-waiting img { filter: brightness(0.35) blur(2px); }
+.viewer-wait { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6px; padding: 18px; color: #fff; text-align: center; }
+.viewer-wait .lights { display: flex; gap: 12px; margin-bottom: 8px; }
+.viewer-wait .lights i { width: 14px; height: 14px; border-radius: 50%; background: #ffd27a; animation: twinkle 1.4s ease-in-out infinite; }
+.viewer-wait .lights i:nth-child(2) { animation-delay: 0.2s; background: #ff7a7a; }
+.viewer-wait .lights i:nth-child(3) { animation-delay: 0.4s; background: #8fd18f; }
+.viewer-wait .lights i:nth-child(4) { animation-delay: 0.6s; background: #7ab8ff; }
+.viewer-wait .lights i:nth-child(5) { animation-delay: 0.8s; }
+.viewer-wait span { font-size: 0.85rem; opacity: 0.85; }
 .making { color: #dfe6f5; text-align: center; padding: 28px 18px; }
 .making .lights { display: flex; justify-content: center; gap: 12px; margin-bottom: 16px; }
 .making .lights i { width: 16px; height: 16px; border-radius: 50%; background: #ffd27a; animation: twinkle 1.4s ease-in-out infinite; }

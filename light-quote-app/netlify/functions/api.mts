@@ -15,13 +15,18 @@ import {
   validatePassword,
   verifyPassword,
   type Session,
+  seal,
+  unseal,
 } from "../lib/auth.mts";
-import { previewProvider } from "../lib/ai.mts";
+import { checkKey, looksLikeKey, PREVIEW_MODELS, previewProvider } from "../lib/ai.mts";
+import { getPlatform, updatePlatform } from "../lib/platform.mts";
 import { cleanCrmConfig, crmActive, pullAll, pushLeadToCrm, suggestStages } from "../lib/crm.mts";
 import { ghlReady, listPipelines } from "../lib/ghl.mts";
-import { getSetting, j, setSetting, sql } from "../lib/db.mts";
+import { j, sql } from "../lib/db.mts";
 import { parseImageDataUrl, readFile } from "../lib/files.mts";
 import {
+  addPreviewColor,
+  canAddColor,
   cleanMeasurement,
   createLead,
   customerView,
@@ -32,6 +37,8 @@ import {
   leadByToken,
   listView,
   MAX_CUSTOMER_REGENS,
+  previewSource,
+  previewUsage,
   publicInstaller,
   staffView,
   startPreviews,
@@ -45,6 +52,7 @@ import { sendEmail, sendWebhook, type EventName } from "../lib/notify.mts";
 import {
   buildQuote,
   cleanItems,
+  COLORS,
   computeEstimate,
   DEFAULT_SETTINGS,
   normalizeSelections,
@@ -62,7 +70,6 @@ interface Ctx {
   origin: string;
 }
 
-const DEFAULT_PLATFORM = { name: "Lumiquote" };
 const MAX_PHOTOS = 3;
 const LEADS_PER_IP_PER_HOUR = 6;
 
@@ -123,9 +130,7 @@ function notify(ctx: Ctx, installer: Installer, lead: Lead, event: EventName): v
   ctx.context.waitUntil(work);
 }
 
-async function platform() {
-  return { ...DEFAULT_PLATFORM, ...((await getSetting<{ name: string }>("platform")) ?? {}) };
-}
+const platform = getPlatform;
 
 /* ------------------------------------------------------------------ public (homeowner) */
 
@@ -156,7 +161,7 @@ async function publicRoutes(ctx: Ctx): Promise<Response> {
       if (lead.status !== "new") fail(409, "Your quote has already been prepared. Ask your installer to change it.");
       if (lead.previews.status === "pending") fail(409, "Your preview is still being made");
       if (lead.previews.regen >= MAX_CUSTOMER_REGENS) fail(429, "You have used all your preview changes");
-      if (!lead.photos.length || !installer.settings.aiPreviews || previewProvider() === "off") fail(409, "Previews are not available");
+      if (!lead.photos.length || !installer.settings.aiPreviews || (await previewSource(installer)) === "none") fail(409, "Previews are not available");
       const selections = normalizeSelections({
         ...lead.selections,
         service: oneOf(body.service, SERVICES, lead.selections.service),
@@ -164,7 +169,21 @@ async function publicRoutes(ctx: Ctx): Promise<Response> {
       });
       const estimate = computeEstimate(selections, installer.settings);
       await sql()`UPDATE leads SET selections = ${j(selections)}::jsonb, estimate = ${j(estimate)}::jsonb WHERE id = ${lead.id}`;
-      await startPreviews(lead.id, lead.previews.regen + 1, ctx.origin);
+      // Remake only the look they are viewing; the other colours are made again if they tap them.
+      await startPreviews(lead.id, lead.previews.regen + 1, ctx.origin, [oneOf(body.color, COLORS, lead.selections.color)]);
+      return json(customerView((await leadById(lead.id))!, installer));
+    }
+
+    // One more colour, made when the customer taps it.
+    if (action === "preview" && req.method === "POST") {
+      const body = await readJson(req);
+      const color = oneOf(body.color, COLORS, "" as any);
+      if (!color) fail(400, "Choose a colour");
+      if (lead.previews.colors[color]?.status === "ready" || lead.previews.colors[color]?.status === "pending") {
+        return json(customerView(lead, installer));
+      }
+      if (!canAddColor(lead, installer, color) || (await previewSource(installer)) === "none") fail(409, "That look is not available right now");
+      await addPreviewColor(lead, color, ctx.origin);
       return json(customerView((await leadById(lead.id))!, installer));
     }
 
@@ -339,7 +358,28 @@ async function ownLead(installer: Installer, leadId: string): Promise<Lead> {
   return lead;
 }
 
-function installerAccount(installer: Installer, ctx: Ctx) {
+/** What the installer may know about their saved Google AI key: that it exists, and its last four characters. */
+async function previewKeyInfo(installer: Installer) {
+  const key = await unseal(installer.previewKey);
+  return { set: key.length > 0, hint: key ? key.slice(-4) : "" };
+}
+
+/** Check a pasted Google AI key with Google, then store it encrypted. `null` removes the saved key. */
+async function savePreviewKey(installerId: string, value: unknown): Promise<void> {
+  if (value === null) {
+    await sql()`UPDATE installers SET preview_key = NULL WHERE id = ${installerId}`;
+    return;
+  }
+  const key = typeof value === "string" ? value.trim() : "";
+  if (!key) fail(400, "Paste the Google AI key first");
+  if (!looksLikeKey(key)) fail(400, "That does not look like a Google AI key. It is a long code that usually starts with AIza.");
+  const checked = await checkKey(key);
+  if (!checked.ok) fail(400, `Google did not accept that key: ${checked.reason}`);
+  await sql()`UPDATE installers SET preview_key = ${await seal(key)} WHERE id = ${installerId}`;
+}
+
+async function installerAccount(installer: Installer, ctx: Ctx) {
+  const source = await previewSource(installer);
   return {
     companyName: installer.companyName,
     username: installer.username,
@@ -350,7 +390,11 @@ function installerAccount(installer: Installer, ctx: Ctx) {
     quoteLink: `${ctx.origin}/q/${installer.slug}`,
     inboundKey: installer.inboundKey,
     inboundUrl: `${ctx.origin}/api/inbound/leads`,
-    previewsAvailable: previewProvider() !== "off",
+    previewsAvailable: source !== "none",
+    /** "own": their Google key pays. "platform": the platform's allowance pays. "none": no previews. */
+    previewSource: source,
+    previewKey: await previewKeyInfo(installer),
+    previewUsage: await previewUsage(installer.id),
     crmLinked: crmActive(installer),
   };
 }
@@ -361,7 +405,7 @@ async function installerRoutes(ctx: Ctx): Promise<Response> {
   const [, resource, id, action] = seg;
 
   if (resource === "account") {
-    if (req.method === "GET") return json(installerAccount(installer, ctx));
+    if (req.method === "GET") return json(await installerAccount(installer, ctx));
     if (req.method === "PUT") {
       const body = await readJson(req);
       const companyName = str(body.companyName, 80) || installer.companyName;
@@ -377,7 +421,7 @@ async function installerRoutes(ctx: Ctx): Promise<Response> {
       await sql()`
         UPDATE installers SET company_name = ${companyName}, phone = ${phone}, slug = ${slug}, settings = ${j(settings)}::jsonb
         WHERE id = ${installer.id}`;
-      return json(installerAccount((await installerById(installer.id))!, ctx));
+      return json(await installerAccount((await installerById(installer.id))!, ctx));
     }
   }
 
@@ -390,9 +434,15 @@ async function installerRoutes(ctx: Ctx): Promise<Response> {
     return json({ ok: true });
   }
 
+  // Save, replace or remove the installer's own Google AI key for previews.
+  if (resource === "preview-key" && (req.method === "PUT" || req.method === "DELETE")) {
+    await savePreviewKey(installer.id, req.method === "DELETE" ? null : String((await readJson(req)).key ?? ""));
+    return json(await installerAccount((await installerById(installer.id))!, ctx));
+  }
+
   if (resource === "inbound-key" && req.method === "POST") {
     await sql()`UPDATE installers SET inbound_key = ${`lq_${newToken(24)}`} WHERE id = ${installer.id}`;
-    return json(installerAccount((await installerById(installer.id))!, ctx));
+    return json(await installerAccount((await installerById(installer.id))!, ctx));
   }
 
   if (resource === "leads" && !id && req.method === "GET") {
@@ -441,9 +491,19 @@ async function installerRoutes(ctx: Ctx): Promise<Response> {
 
     if (action === "regenerate" && req.method === "POST") {
       if (!lead.photos.length) fail(409, "This lead has no photo to work from");
-      if (previewProvider() === "off") fail(409, "Lighting previews are not switched on for this platform yet");
+      if ((await previewSource(installer)) === "none") fail(409, "Add your Google AI key in Settings to make lighting previews");
       if (lead.previews.status === "pending") fail(409, "A preview is already being made");
-      await startPreviews(lead.id, lead.previews.regen, ctx.origin);
+      const body = await readJson(req).catch(() => ({}) as any);
+      const extra = oneOf(body?.color, COLORS, "" as any);
+      if (extra) {
+        // One more colour next to the ones already made.
+        if (!canAddColor(lead, { ...installer, settings: { ...installer.settings, aiPreviews: true } }, extra)) fail(409, "That look cannot be made right now");
+        await addPreviewColor(lead, extra, ctx.origin);
+      } else {
+        // Remake what is there; with nothing there yet, start with the customer's chosen colour.
+        const made = COLORS.filter((color) => lead.previews.colors[color]);
+        await startPreviews(lead.id, lead.previews.regen, ctx.origin, made.length ? made : [lead.selections.color]);
+      }
       return json({ lead: staffView((await leadById(lead.id))!, installer) });
     }
   }
@@ -480,6 +540,7 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
       },
       platform: await platform(),
       previewsAvailable: previewProvider() !== "off",
+      previewModels: PREVIEW_MODELS,
       crm: await crmSummary(),
     });
   }
@@ -498,11 +559,9 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
   }
 
   if (resource === "platform" && req.method === "PUT") {
-    const body = await readJson(req);
-    const name = str(body.name, 40);
-    if (name.length < 2) fail(400, "Enter a platform name");
-    await setSetting("platform", { name });
-    return json(await platform());
+    const saved = await updatePlatform(await readJson(req));
+    if (!saved) fail(400, "Enter a platform name");
+    return json(saved);
   }
 
   if (resource === "installers" && !id && req.method === "GET") {
@@ -510,7 +569,9 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
       SELECT i.*, count(l.id)::int AS lead_count,
              count(l.id) FILTER (WHERE l.status IN ('booked', 'completed'))::int AS booked_count,
              coalesce(sum((l.quote->>'total')::numeric) FILTER (WHERE l.status IN ('booked', 'completed')), 0)::float AS booked_value,
-             max(l.created_at) AS last_lead_at
+             max(l.created_at) AS last_lead_at,
+             (SELECT u.images FROM preview_usage u WHERE u.installer_id = i.id AND u.month = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM')) AS preview_images,
+             (SELECT u.platform_images FROM preview_usage u WHERE u.installer_id = i.id AND u.month = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM')) AS preview_platform_images
       FROM installers i LEFT JOIN leads l ON l.installer_id = i.id
       GROUP BY i.id ORDER BY i.created_at DESC`;
     return json({
@@ -531,6 +592,9 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
         quoteLink: `${ctx.origin}/q/${row.slug}`,
         crmLinked: cleanCrmConfig(row.crm) !== null,
         crm: cleanCrmConfig(row.crm),
+        previewKeySet: typeof row.preview_key === "string" && row.preview_key.length > 0,
+        previewImages: row.preview_images ?? 0,
+        previewPlatformImages: row.preview_platform_images ?? 0,
       })),
     });
   }
@@ -586,6 +650,7 @@ async function adminRoutes(ctx: Ctx): Promise<Response> {
         if (body.crm !== null && !crm) fail(400, "That CRM link is not valid");
         await sql()`UPDATE installers SET crm = ${j(crm)}::jsonb WHERE id = ${installer.id}`;
       }
+      if (body.previewKey !== undefined) await savePreviewKey(installer.id, body.previewKey);
       if (body.password !== undefined) {
         const hash = await hashPassword(validatePassword(body.password));
         await sql()`UPDATE installers SET password_hash = ${hash} WHERE id = ${installer.id}`;

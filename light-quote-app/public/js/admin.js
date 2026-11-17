@@ -4,6 +4,7 @@ import {
 } from "./lib.js";
 
 const page = $("#page");
+const cents = (usd) => `${Math.round(usd * 100)}¢`;
 const dialog = $("#dialog");
 let platform = { name: "Admin" };
 let installers = [];
@@ -67,6 +68,19 @@ async function showOverview() {
         <p class="small muted">Shown to installers on the sign-in page and dashboard. Homeowners never see it: their pages carry only the installer's brand.</p>
         <div class="copy-row"><input type="text" id="platform-name" value="${platform.name}" maxlength="40" aria-label="Platform name"><button type="button" class="btn btn-secondary" id="save-platform">Save</button></div>
       </section>
+      <section class="card stack">
+        <div class="section-title" style="margin:0">Lighting previews</div>
+        <p class="small muted">One image is made per request, in the customer's chosen colour. Another is made only when a colour is tapped. Each installer can have their own Google AI key (Installers → Manage), so Google bills them and not you.</p>
+        <label class="field"><span>Picture quality</span>
+          <select id="platform-quality">
+            <option value="standard" ${raw(platform.previewQuality === "standard" ? "selected" : "")}>Standard, about ${cents(overview.previewModels.standard.usd)} an image</option>
+            <option value="economy" ${raw(platform.previewQuality === "economy" ? "selected" : "")}>Economy, about ${cents(overview.previewModels.economy.usd)} an image</option>
+          </select>
+          <span class="hint">Google's list prices. Economy uses a lighter model: check a few previews before leaving it on.</span></label>
+        <label class="row"><input type="checkbox" id="platform-fallback" ${raw(platform.previewFallback ? "checked" : "")} style="width:20px;height:20px"> <span>Installers without their own key use the platform's AI allowance (you pay)</span></label>
+        <p class="small muted">${overview.previewsAvailable ? "Untick this and installers without a key get no previews." : "The platform has no AI allowance of its own right now, so only installers with a key get previews."}</p>
+        <div><button type="button" class="btn btn-secondary" id="save-previews">Save preview settings</button></div>
+      </section>
     </div>
     <h2 style="margin-bottom:12px">Latest leads</h2>
     ${leadsTable(recent.leads.slice(0, 8))}`);
@@ -101,7 +115,7 @@ async function showInstallers() {
           <tbody>
             ${installers.map((i) => html`
               <tr>
-                <td><strong>${i.companyName}</strong>${i.crmLinked ? html` <span class="pill pill-new">CRM linked</span>` : ""}<div class="small muted">Signs in as <strong>${i.username}</strong>${i.canSignIn ? "" : html` · <span style="color:var(--bad)">no password set</span>`}</div></td>
+                <td><strong>${i.companyName}</strong>${i.crmLinked ? html` <span class="pill pill-new">CRM linked</span>` : ""}${i.previewKeySet ? html` <span class="pill pill-active">Own AI key</span>` : ""}<div class="small muted">Signs in as <strong>${i.username}</strong>${i.canSignIn ? "" : html` · <span style="color:var(--bad)">no password set</span>`}</div></td>
                 <td><button type="button" class="btn btn-sm btn-ghost" data-copy="${i.quoteLink}">/q/${i.slug}</button></td>
                 <td class="right num">${i.leadCount}</td>
                 <td class="right num">${i.bookedCount}</td>
@@ -166,6 +180,20 @@ function openManage(id) {
       <form class="card card-flat stack" id="crm-link" data-id="${i.id}" novalidate>
         <div class="section-title" style="margin:0">GoHighLevel pipeline</div>
         <div id="crm-link-body" class="stack"><p class="small muted">Loading pipelines…</p></div>
+      </form>
+      <form class="card card-flat stack" id="preview-key-form" data-id="${i.id}" novalidate>
+        <div class="section-title" style="margin:0">Lighting previews</div>
+        <p class="small muted">${i.previewKeySet
+          ? "This installer has their own Google AI key, so Google bills them for previews."
+          : "No key saved. Their previews run on the platform's allowance, or are off if you have switched that off."}
+          Images this month: <strong>${i.previewImages}</strong>${i.previewPlatformImages ? html`, of which <strong>${i.previewPlatformImages}</strong> on your allowance` : ""}.</p>
+        <label class="field"><span>${i.previewKeySet ? "Replace their Google AI key" : "Their Google AI key"}</span>
+          <input type="password" name="previewKey" autocomplete="off" spellcheck="false" placeholder="Starts with AIza…">
+          <span class="hint">From aistudio.google.com/apikey, with billing switched on. Checked with Google, stored encrypted, never shown again.</span></label>
+        <div class="row">
+          <button type="submit" class="btn btn-secondary">Save key</button>
+          ${i.previewKeySet ? html`<button type="button" class="btn btn-ghost" data-remove-key="${i.id}">Remove key</button>` : ""}
+        </div>
       </form>
       <div class="card card-flat stack">
         <div class="section-title" style="margin:0">Access</div>
@@ -335,6 +363,22 @@ document.addEventListener("click", async (event) => {
       setHtml($("#crm-card"), crmCard(crm, results));
     });
   }
+  if (target.id === "save-previews") {
+    return busy(target, async () => {
+      setPlatform(await api("admin/platform", { method: "PUT", body: { previewQuality: $("#platform-quality").value, previewFallback: $("#platform-fallback").checked } }));
+      toast("Preview settings saved");
+    });
+  }
+  const removeKey = closest("[data-remove-key]");
+  if (removeKey) {
+    if (!confirm("Remove this installer's Google AI key?")) return;
+    return busy(removeKey, async () => {
+      await api(`admin/installers/${removeKey.dataset.removeKey}`, { method: "PATCH", body: { previewKey: null } });
+      toast("Key removed");
+      await showInstallers();
+      openManageRefresh(removeKey.dataset.removeKey);
+    });
+  }
   if (target.id === "save-platform") {
     return busy(target, async () => { setPlatform(await api("admin/platform", { method: "PUT", body: { name: $("#platform-name").value } })); toast("Saved"); });
   }
@@ -400,6 +444,17 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
+  if (event.target.id === "preview-key-form") {
+    event.preventDefault();
+    const form = event.target;
+    await busy(form.querySelector('button[type="submit"]'), async () => {
+      await api(`admin/installers/${form.dataset.id}`, { method: "PATCH", body: { previewKey: String(new FormData(form).get("previewKey") || "").trim() } });
+      toast("Key saved. Their previews now run on that Google account.");
+      await showInstallers();
+      openManageRefresh(form.dataset.id);
+    });
+    return;
+  }
   if (event.target.id === "crm-link") {
     event.preventDefault();
     const form = event.target;

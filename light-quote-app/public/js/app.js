@@ -203,8 +203,15 @@ function renderLead() {
               ${lead.photoUrls.map((url, i) => html`<figure><a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="Customer photo ${i + 1}" loading="lazy"></a><figcaption>Photo ${i + 1}</figcaption></figure>`)}
               ${previews.map(([color, url]) => html`<figure><a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${COLOR_LABELS[color]} preview" loading="lazy"></a><figcaption>${COLOR_LABELS[color]}</figcaption></figure>`)}
             </div>` : html`<p class="muted small">The customer did not add a photo. Use the map and Street View links to see the house.</p>`}
-          ${lead.previews.status === "failed" ? html`<p class="small" style="color:var(--bad);margin-top:8px">The preview could not be made. Try "Remake previews".</p>` : ""}
-          ${lead.photoUrls.length && !account.previewsAvailable ? html`<p class="small muted" style="margin-top:8px">Lighting previews are not switched on for this platform yet.</p>` : ""}
+          ${lead.photoUrls.length && account.previewsAvailable && lead.previews.status === "ready" ? html`
+            <div class="row" style="margin-top:10px">
+              ${Object.keys(COLOR_LABELS).filter((c) => lead.previews.colors[c]?.status !== "ready").map((c) => lead.previews.colors[c]?.status === "pending"
+                ? html`<span class="small muted">Making ${COLOR_LABELS[c].toLowerCase()}…</span>`
+                : html`<button type="button" class="btn btn-sm btn-ghost" data-make-color="${c}">Make ${COLOR_LABELS[c].toLowerCase()}</button>`)}
+            </div>
+            <p class="hint">Only the customer's chosen colour is made up front. The others are made when they, or you, ask for them.</p>` : ""}
+          ${previewProblem() ? html`<p class="small" style="color:var(--bad);margin-top:8px">${previewProblem()}</p>` : ""}
+          ${lead.photoUrls.length && !account.previewsAvailable ? html`<p class="small muted" style="margin-top:8px">Lighting previews are off. Add your Google AI key in Settings to turn them on.</p>` : ""}
         </section>
 
         <section class="card stack">
@@ -244,6 +251,14 @@ function renderLead() {
 
   renderQuote();
   initMap();
+}
+
+/** Why a preview did not come back, in words an installer can act on. Empty when nothing went wrong. */
+function previewProblem() {
+  const colors = Object.values(lead.previews.colors || {});
+  const reason = lead.previews.error || colors.find((c) => c.status === "failed" && c.error)?.error;
+  if (lead.previews.status !== "failed" && !colors.some((c) => c.status === "failed")) return "";
+  return `A preview could not be made${reason ? `: ${reason}` : "."} ${account.previewSource === "own" ? "Check your Google AI key and its billing in Settings, then try again." : 'Try "Remake previews".'}`;
 }
 
 /** One line telling the installer whether this lead is in their CRM pipeline. */
@@ -426,6 +441,14 @@ page.addEventListener("click", async (event) => {
       await api(`installer/leads/${lead.id}`, { method: "DELETE" });
       toast("Lead deleted");
       location.hash = "leads";
+    });
+  }
+  if (target.dataset.makeColor) {
+    return busy(target, async () => {
+      ({ lead } = await api(`installer/leads/${lead.id}/regenerate`, { method: "POST", body: { color: target.dataset.makeColor } }));
+      toast(`Making the ${COLOR_LABELS[target.dataset.makeColor].toLowerCase()} preview. Refresh in a minute.`);
+      readDraftInputs();
+      renderLead();
     });
   }
   if (target.id === "regen") {
@@ -619,7 +642,7 @@ function showSettings() {
       <section class="card stack">
         <div class="section-title" style="margin:0">Previews and limits</div>
         <label class="row"><input type="checkbox" id="s-ai" ${raw(s.aiPreviews ? "checked" : "")} style="width:20px;height:20px"> <span>Show customers a lighting preview of their own home</span></label>
-        ${account.previewsAvailable ? "" : html`<p class="notice notice-warn">Previews are not switched on for this platform yet, so customers will not see one.</p>`}
+        ${previewKeyPanel()}
         ${number("s-cap", "Most requests accepted per day", s.dailyLeadCap, "1", "Protects you from spam and runaway preview costs.")}
       </section>
 
@@ -677,6 +700,24 @@ page.addEventListener("change", async (event) => {
   }
 });
 
+/** Whose AI allowance pays for previews, and the installer's own Google key. */
+function previewKeyPanel() {
+  const key = account.previewKey;
+  const used = account.previewUsage;
+  const status = account.previewSource === "own"
+    ? html`<p class="notice notice-good">Previews run on your Google AI key ending <strong>${key.hint}</strong>. Google bills you a few cents per image.</p>`
+    : account.previewSource === "platform"
+      ? html`<p class="notice notice-info">Previews currently run on the platform's AI allowance. Add your own Google AI key to run them on your account.</p>`
+      : html`<p class="notice notice-warn">Previews are off until a Google AI key is added, so customers will not see one.</p>`;
+  return html`
+    ${status}
+    <label class="field"><span>${key.set ? "Replace your Google AI key" : "Your Google AI key"}</span>
+      <span class="copy-row"><input type="password" id="s-preview-key" autocomplete="off" spellcheck="false" placeholder="Starts with AIza…"><button type="button" class="btn btn-secondary" id="save-preview-key">Save key</button></span>
+      <span class="hint">Create one at aistudio.google.com/apikey and switch on billing for it. It is checked with Google, stored encrypted, and never shown again.</span></label>
+    ${key.set ? html`<div><button type="button" class="btn btn-sm btn-ghost" id="remove-preview-key">Remove my key</button></div>` : ""}
+    <p class="small muted">Preview images made this month: <strong>${used.images}</strong>. One is made per request; another only when a colour is tapped.</p>`;
+}
+
 /** Show what the three per-foot rates add up to, so an installer can see their all-in price as they type. */
 function showPerFootTotal() {
   const box = $("#perft-total");
@@ -695,6 +736,16 @@ page.addEventListener("click", async (event) => {
   if (!$("#save-settings")) return;
   const value = (id) => $(`#${id}`).value;
   const numberOf = (id) => Number(value(id));
+
+  if (target.id === "save-preview-key" || target.id === "remove-preview-key") {
+    const removing = target.id === "remove-preview-key";
+    if (removing && !confirm("Remove your Google AI key?")) return;
+    return busy(target, async () => {
+      account = await api("installer/preview-key", removing ? { method: "DELETE" } : { method: "PUT", body: { key: value("s-preview-key") } });
+      showSettings();
+      toast(removing ? "Key removed" : "Key saved. Previews now run on your Google account.");
+    });
+  }
 
   if (target.id === "logo-remove") {
     pendingLogo = "";

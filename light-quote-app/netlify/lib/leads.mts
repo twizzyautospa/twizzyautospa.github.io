@@ -9,12 +9,14 @@ import {
   estimateBreakdown,
   normalizeSettings,
   suggestedItems,
+  type Color,
   type Estimate,
   type InstallerSettings,
   type Quote,
   type Selections,
 } from "./pricing.mts";
 import { newId, newToken } from "./util.mts";
+import { getPlatform } from "./platform.mts";
 import { cleanCrmConfig, type CrmConfig, type LeadCrm } from "./crm-config.mts";
 
 export const STATUSES = ["new", "quoted", "booked", "completed", "declined", "lost"] as const;
@@ -37,6 +39,8 @@ export interface Installer {
   createdAt: string;
   /** Link to a CRM pipeline. Set by the platform owner only, never by the installer. */
   crm: CrmConfig | null;
+  /** The installer's own Google AI key, encrypted. Never sent to a browser. */
+  previewKey: string | null;
 }
 
 export function toInstaller(row: any): Installer {
@@ -53,7 +57,29 @@ export function toInstaller(row: any): Installer {
     inboundKey: row.inbound_key,
     createdAt: new Date(row.created_at).toISOString(),
     crm: cleanCrmConfig(row.crm),
+    previewKey: typeof row.preview_key === "string" && row.preview_key ? row.preview_key : null,
   };
+}
+
+/** Whose AI allowance an installer's previews run on: their own key, the platform's, or nobody's. */
+export async function previewSource(installer: Installer): Promise<"own" | "platform" | "none"> {
+  if (installer.previewKey) return "own";
+  return (await getPlatform()).previewFallback && previewProvider() !== "off" ? "platform" : "none";
+}
+
+const thisMonth = () => new Date().toISOString().slice(0, 7);
+
+/** Count one finished preview image against the installer for this month. */
+export async function countPreview(installerId: string, onPlatform: boolean): Promise<void> {
+  await sql()`
+    INSERT INTO preview_usage (installer_id, month, images, platform_images) VALUES (${installerId}, ${thisMonth()}, 1, ${onPlatform ? 1 : 0})
+    ON CONFLICT (installer_id, month) DO UPDATE
+      SET images = preview_usage.images + 1, platform_images = preview_usage.platform_images + ${onPlatform ? 1 : 0}`;
+}
+
+export async function previewUsage(installerId: string): Promise<{ images: number; platformImages: number }> {
+  const rows = await sql()`SELECT images, platform_images FROM preview_usage WHERE installer_id = ${installerId} AND month = ${thisMonth()}`;
+  return { images: rows[0]?.images ?? 0, platformImages: rows[0]?.platform_images ?? 0 };
 }
 
 export async function installerById(id: string): Promise<Installer | null> {
@@ -82,8 +108,26 @@ export interface PreviewState {
   run?: string;
   regen: number;
   startedAt?: string;
-  colors: Partial<Record<(typeof COLORS)[number], { status: "ready" | "failed"; file?: string }>>;
+  /** Why the last run failed, for the installer to read. Never shown to the customer. */
+  error?: string;
+  /**
+   * One entry per colour that has been asked for. Only the customer's chosen colour is made up front; the others
+   * are made when someone taps them, so nobody pays for pictures that are never looked at.
+   */
+  colors: Partial<Record<Color, PreviewColor>>;
 }
+
+export interface PreviewColor {
+  status: "pending" | "ready" | "failed";
+  file?: string;
+  startedAt?: string;
+  /** How many times this colour has been attempted in this run. */
+  tries?: number;
+  error?: string;
+}
+
+/** A colour can be retried once after a failure, so a broken key cannot be hammered from a customer's phone. */
+export const MAX_COLOR_TRIES = 2;
 
 export interface Lead {
   id: string;
@@ -113,8 +157,12 @@ export interface Lead {
 export function toLead(row: any): Lead {
   const previews: PreviewState = { status: "none", regen: 0, colors: {}, ...(row.previews || {}) };
   // A background run that never reported back should not spin forever on the customer's screen.
-  if (previews.status === "pending" && previews.startedAt) {
-    if (Date.now() - new Date(previews.startedAt).getTime() > PREVIEW_STALE_MS) previews.status = "failed";
+  const stale = (startedAt?: string) => Boolean(startedAt) && Date.now() - new Date(startedAt!).getTime() > PREVIEW_STALE_MS;
+  if (previews.status === "pending" && stale(previews.startedAt)) previews.status = "failed";
+  previews.colors = { ...previews.colors };
+  for (const color of COLORS) {
+    const entry = previews.colors[color];
+    if (entry?.status === "pending" && stale(entry.startedAt)) previews.colors[color] = { ...entry, status: "failed" };
   }
   return {
     id: row.id,
@@ -190,6 +238,9 @@ export function customerView(lead: Lead, installer: Installer) {
         status: lead.previews.status,
         regensLeft: Math.max(0, MAX_CUSTOMER_REGENS - lead.previews.regen),
         colors: previewUrls(lead, true),
+        /** Colours being made right now, and colours that can still be asked for with a tap. */
+        making: COLORS.filter((color) => lead.previews.colors[color]?.status === "pending"),
+        available: COLORS.filter((color) => canAddColor(lead, installer, color)),
       },
       quote: lead.quote,
       booking: lead.booking,
@@ -319,30 +370,59 @@ export async function createLead(installer: Installer, input: NewLead, origin: s
             ${j({ status: "none", regen: 0, colors: {} })}::jsonb, ${j(quote)}::jsonb, ${j(booking)}::jsonb,
             ${input.notes ?? ""}, ${input.ipHash ?? ""})`;
 
-  if (photoNames.length && installer.settings.aiPreviews && previewProvider() !== "off") {
-    await startPreviews(id, 0, origin);
+  if (photoNames.length && installer.settings.aiPreviews && (await previewSource(installer)) !== "none") {
+    await startPreviews(id, 0, origin, [input.selections.color]);
   }
   return (await leadById(id))!;
 }
 
-/** Mark previews as pending and hand the work to the background function. */
-export async function startPreviews(leadId: string, regen: number, origin: string): Promise<void> {
+/** Ask the background function to make these colours for this run. Throws if it could not be reached. */
+async function fireBackground(origin: string, leadId: string, run: string, colors: Color[]): Promise<void> {
+  const res = await fetch(`${origin}/bg/previews`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ leadId, run, colors, sig: await sign(`previews:${leadId}:${run}:${colors.join(",")}`) }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (res.status >= 400) throw new Error(`background function answered ${res.status}`);
+}
+
+/** Start a fresh set of previews: everything made before is dropped and only `colors` are made now. */
+export async function startPreviews(leadId: string, regen: number, origin: string, colors: Color[]): Promise<void> {
   const run = newToken(9);
   const state: PreviewState = { status: "pending", run, regen, startedAt: new Date().toISOString(), colors: {} };
   await sql()`UPDATE leads SET previews = ${j(state)}::jsonb, updated_at = now() WHERE id = ${leadId}`;
   try {
-    const res = await fetch(`${origin}/bg/previews`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ leadId, run, sig: await sign(`previews:${leadId}:${run}`) }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (res.status >= 400) throw new Error(`background function answered ${res.status}`);
+    await fireBackground(origin, leadId, run, colors);
   } catch (err) {
     console.error("Could not start preview generation:", (err as Error).message);
     await sql()`
       UPDATE leads SET previews = jsonb_set(previews, '{status}', '"failed"'::jsonb), updated_at = now()
       WHERE id = ${leadId} AND previews->>'run' = ${run}`;
+  }
+}
+
+/** Whether one more colour can be made for this lead right now. */
+export function canAddColor(lead: Lead, installer: Installer, color: Color): boolean {
+  if (!lead.photos.length || !installer.settings.aiPreviews || lead.previews.status !== "ready" || !lead.previews.run) return false;
+  const entry = lead.previews.colors[color];
+  if (!entry) return true;
+  return entry.status === "failed" && (entry.tries ?? 1) < MAX_COLOR_TRIES;
+}
+
+/** Make one more colour alongside the ones already there. The caller checks `canAddColor` first. */
+export async function addPreviewColor(lead: Lead, color: Color, origin: string): Promise<void> {
+  const run = lead.previews.run!;
+  const entry: PreviewColor = { status: "pending", startedAt: new Date().toISOString(), tries: (lead.previews.colors[color]?.tries ?? 0) + 1 };
+  const setColor = (value: PreviewColor) => sql()`
+    UPDATE leads SET previews = jsonb_set(previews, ARRAY['colors', ${color}]::text[], ${j(value)}::jsonb, true), updated_at = now()
+    WHERE id = ${lead.id} AND previews->>'run' = ${run}`;
+  await setColor(entry);
+  try {
+    await fireBackground(origin, lead.id, run, [color]);
+  } catch (err) {
+    console.error("Could not start preview generation:", (err as Error).message);
+    await setColor({ ...entry, status: "failed" });
   }
 }
 

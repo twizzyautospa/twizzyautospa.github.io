@@ -5,18 +5,46 @@ import { env } from "./util.mts";
 /**
  * Lighting previews.
  *
- * On Netlify, AI Gateway injects GEMINI_API_KEY and GOOGLE_GEMINI_BASE_URL, so no key needs to be set.
- * Set PREVIEW_PROVIDER=off to disable, or PREVIEW_PROVIDER=mock to return the original photo (local testing).
- * PREVIEW_MODEL overrides the image model.
+ * Whose AI allowance pays for an image:
+ *  - the installer's own Google AI key, when one is saved on their account (billed to them by Google);
+ *  - otherwise the platform's: on Netlify, AI Gateway injects GEMINI_API_KEY and GOOGLE_GEMINI_BASE_URL, so no
+ *    key needs to be set. The owner can switch this fallback off so installers without a key get no previews.
+ *
+ * PREVIEW_PROVIDER=off disables the platform's allowance; PREVIEW_PROVIDER=mock returns the original photo (local
+ * testing). PREVIEW_MODEL overrides the image model. PREVIEW_API_BASE points own-key calls at another host (tests).
  */
 export type PreviewProvider = "gemini" | "mock" | "off";
 
-const DEFAULT_MODEL = "gemini-3.1-flash-image";
+/** The two image models offered, by cost. Google's list prices per 1K image, November 2026. */
+export const PREVIEW_MODELS = {
+  standard: { id: "gemini-3.1-flash-image", usd: 0.067 },
+  economy: { id: "gemini-3.1-flash-lite-image", usd: 0.034 },
+} as const;
+export type PreviewQuality = keyof typeof PREVIEW_MODELS;
 
+const GOOGLE_API = "https://generativelanguage.googleapis.com";
+const ownKeyBase = () => (env("PREVIEW_API_BASE") || GOOGLE_API).replace(/\/+$/, "");
+
+/** The platform's own allowance: what is used when an installer has no key of their own. */
 export function previewProvider(): PreviewProvider {
   const forced = env("PREVIEW_PROVIDER").toLowerCase();
   if (forced === "mock" || forced === "off" || forced === "gemini") return forced;
   return env("GEMINI_API_KEY") || env("GOOGLE_GEMINI_BASE_URL") ? "gemini" : "off";
+}
+
+/** Google AI keys are 39 characters starting "AIza"; newer ones can be longer. Loose on purpose, checked for real by `checkKey`. */
+export const looksLikeKey = (key: string) => /^[A-Za-z0-9_-]{30,120}$/.test(key);
+
+/** Ask Google whether a key is live. Listing models is free, so this costs the installer nothing. */
+export async function checkKey(key: string): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const res = await fetch(`${ownKeyBase()}/v1beta/models?pageSize=1`, { headers: { "x-goog-api-key": key }, signal: AbortSignal.timeout(10_000) });
+    if (res.ok) return { ok: true };
+    const data: any = await res.json().catch(() => ({}));
+    return { ok: false, reason: String(data?.error?.message || `Google answered ${res.status}`).slice(0, 200) };
+  } catch (err) {
+    return { ok: false, reason: `Could not reach Google (${(err as Error).message})`.slice(0, 200) };
+  }
 }
 
 const COLOR_TEXT: Record<Color, string> = {
@@ -61,18 +89,26 @@ export interface GeneratedImage {
   mime: string;
 }
 
+export interface PreviewOptions {
+  /** The installer's own Google AI key. Empty to use the platform's allowance. */
+  apiKey?: string;
+  quality?: PreviewQuality;
+}
+
 export async function generatePreview(
   photo: { bytes: Buffer; mime: string },
   selections: Selections,
   color: Color,
+  options: PreviewOptions = {},
 ): Promise<GeneratedImage> {
   const provider = previewProvider();
-  if (provider === "off") throw new Error("Previews are not enabled");
-  if (provider === "mock") return { bytes: photo.bytes, mime: photo.mime };
+  if (!options.apiKey && provider === "off") throw new Error("Previews are not enabled");
+  if (!options.apiKey && provider === "mock") return { bytes: photo.bytes, mime: photo.mime };
 
-  const client = new GoogleGenAI({});
+  // With the installer's key the call goes straight to Google; the gateway address in the environment is ignored.
+  const client = options.apiKey ? new GoogleGenAI({ apiKey: options.apiKey, httpOptions: { baseUrl: ownKeyBase(), apiVersion: "v1beta" } }) : new GoogleGenAI({});
   const response = await client.models.generateContent({
-    model: env("PREVIEW_MODEL") || DEFAULT_MODEL,
+    model: env("PREVIEW_MODEL") || PREVIEW_MODELS[options.quality ?? "standard"].id,
     contents: [
       {
         role: "user",
@@ -82,6 +118,7 @@ export async function generatePreview(
         ],
       },
     ],
+    // No size is set: the default, 1K, is already the smallest and cheapest the models offer.
     config: { responseModalities: ["TEXT", "IMAGE"] },
   });
 
