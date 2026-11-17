@@ -397,3 +397,27 @@ input[type="range"] { width: 100%; height: 30px; accent-color: var(--accent-fill
   .trace, .trace.run { animation: none; stroke-dashoffset: 0; }
   .dots i { animation: none; opacity: 0.7; }
 }
+
+/* ---------- pricing ---------- */
+.plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 22px; margin-top: 44px; }
+.plan { position: relative; background: #fff; border: 1.5px solid var(--line); border-radius: var(--radius); padding: 30px 28px; }
+.plan-best { border-color: var(--accent-fill); background: var(--accent-soft); }
+.plan-tag { position: absolute; top: -13px; left: 24px; background: var(--accent-fill); color: #fff; font-size: 0.75rem; font-weight: 700; padding: 5px 13px; border-radius: 999px; }
+.plan h3 { font-size: 1.25rem; }
+.plan-price { font-size: clamp(2.6rem, 6vw, 3.4rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1.1; margin-top: 8px; color: var(--ink); }
+.plan-price span { font-size: 1rem; font-weight: 600; letter-spacing: 0; color: var(--ink-3); }
+.plan-line { margin-top: 6px; color: var(--ink-2); }
+.plan-list { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 10px; }
+.plan-list li { display: flex; gap: 10px; align-items: flex-start; }
+.plan-list svg { width: 20px; height: 20px; flex: none; color: var(--accent); margin-top: 2px; }
+.pricing-split { margin-top: 28px; align-items: stretch; }
+.own-table.years [role="cell"]:last-child { font-weight: 700; }
+.cents { background: var(--ink); color: #fff; border-radius: var(--radius); padding: 28px; }
+.cents .eyebrow { color: #c3cdea; margin-bottom: 10px; }
+.cents h3 { color: #ffc857; font-size: 1.45rem; }
+.cents p { color: #c3cdea; margin-top: 8px; }
+.cents dl { margin: 16px 0 0; }
+.cents dl div { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-top: 1px solid rgba(255, 255, 255, 0.16); }
+.cents dd { margin: 0; font-weight: 800; color: #ffc857; white-space: nowrap; }
+.plan-note { margin-top: 18px; font-size: 0.88rem; color: var(--ink-3); max-width: 60em; }
+.plan-cta { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 12px; }
