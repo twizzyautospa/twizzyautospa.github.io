@@ -7,7 +7,13 @@ export interface CrmConfig {
   importBooked: boolean;
   /** Only CRM changes after this moment are imported, so old history is not copied in. */
   since: string;
+  /** Days a sent quote can sit unanswered before its contact is tagged for a reminder. 0 turns follow-ups off. */
+  followUpDays: number;
 }
+
+/** The tag a CRM workflow listens for to send the reminder. Removed again when the customer answers. */
+export const FOLLOW_UP_TAG = "lumiquote-quote-followup";
+export const DEFAULT_FOLLOW_UP_DAYS = 2;
 
 export interface LeadCrm {
   contactId?: string;
@@ -16,6 +22,10 @@ export interface LeadCrm {
   imported?: boolean;
   syncedAt?: string;
   error?: string;
+  /** When the reminder tag was added. Cleared once the tag is taken off again. */
+  followUpAt?: string;
+  /** The `sentAt` of the quote that was followed up, so each quote is chased once. */
+  followUpFor?: string;
 }
 
 const ID = /^[A-Za-z0-9_-]{6,64}$/;
@@ -26,12 +36,14 @@ export function cleanCrmConfig(input: any): CrmConfig | null {
   const ids = [input.pipelineId, stages.new, stages.quoted, stages.booked, stages.completed, stages.lost];
   if (!ids.every((id) => typeof id === "string" && ID.test(id))) return null;
   const since = typeof input.since === "string" && !Number.isNaN(Date.parse(input.since)) ? input.since : new Date().toISOString();
+  const days = Number(input.followUpDays);
   return {
     provider: "ghl",
     pipelineId: input.pipelineId,
     stages: { new: stages.new, quoted: stages.quoted, booked: stages.booked, completed: stages.completed, lost: stages.lost },
     importBooked: input.importBooked !== false,
     since,
+    followUpDays: input.followUpDays === undefined || !Number.isFinite(days) ? DEFAULT_FOLLOW_UP_DAYS : Math.min(30, Math.max(0, Math.round(days))),
   };
 }
 

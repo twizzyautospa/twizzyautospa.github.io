@@ -252,7 +252,7 @@ function crmStatus() {
   if (crm?.error) return html`<span style="color:var(--bad)">Not synced: ${crm.error}</span>`;
   if (crm?.opportunityId) {
     const how = crm.imported ? "Came from your LeadThru pipeline" : crm.linkedExisting ? "Matched to an existing lead in your LeadThru pipeline" : "Added to your LeadThru pipeline";
-    return html`${how} <span class="muted">· ${timeAgo(crm.syncedAt)}</span>`;
+    return html`${how} <span class="muted">· ${timeAgo(crm.syncedAt)}</span>${crm.followUpAt ? html`<div class="small muted">No answer to the quote yet. Tagged for a reminder ${timeAgo(crm.followUpAt)}.</div>` : ""}`;
   }
   return html`<span class="muted">Syncing to your LeadThru pipeline…</span>`;
 }

@@ -33,3 +33,14 @@ test("a CRM link needs a pipeline and all five stages", () => {
   assert.equal(ok.importBooked, true);
   assert.ok(!Number.isNaN(Date.parse(ok.since)));
 });
+
+test("quote follow-ups default to two days and can be changed or turned off", () => {
+  const stages = { new: "stage_a1", quoted: "stage_b2", booked: "stage_c3", completed: "stage_d4", lost: "stage_e5" };
+  const link = (extra) => cleanCrmConfig({ provider: "ghl", pipelineId: "pipeline_1", stages, ...extra });
+  assert.equal(link({}).followUpDays, 2);
+  assert.equal(link({ followUpDays: 5 }).followUpDays, 5);
+  assert.equal(link({ followUpDays: 0 }).followUpDays, 0);
+  assert.equal(link({ followUpDays: "3" }).followUpDays, 3);
+  assert.equal(link({ followUpDays: 400 }).followUpDays, 30);
+  assert.equal(link({ followUpDays: "soon" }).followUpDays, 2);
+});

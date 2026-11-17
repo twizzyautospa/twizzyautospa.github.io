@@ -1,20 +1,25 @@
-import { j, sql } from "./db.mts";
+import { getSetting, j, setSetting, sql } from "./db.mts";
 import {
   addNote,
+  addTags,
+  createContactField,
   createOpportunity,
   findOpportunity,
   getContactAddress,
   ghlReady,
+  listContactFields,
   listOpportunities,
+  removeTags,
+  setContactFields,
   updateOpportunity,
   upsertContact,
 } from "./ghl.mts";
 import { geocode, type Installer, type Lead } from "./leads.mts";
 import { buildQuote, normalizeSelections } from "./pricing.mts";
 import { newId, newToken } from "./util.mts";
-import type { CrmConfig, LeadCrm } from "./crm-config.mts";
+import { FOLLOW_UP_TAG, type CrmConfig, type LeadCrm } from "./crm-config.mts";
 
-export { cleanCrmConfig, suggestStages, type CrmConfig, type LeadCrm } from "./crm-config.mts";
+export { cleanCrmConfig, FOLLOW_UP_TAG, suggestStages, type CrmConfig, type LeadCrm } from "./crm-config.mts";
 
 /**
  * Two-way sync between an installer's leads and their CRM pipeline.
@@ -55,6 +60,37 @@ function stageFor(status: string, config: CrmConfig): string | undefined {
   return undefined;
 }
 
+/**
+ * Contact fields a reminder message can use: {{contact.lumiquote_quote_link}}, {{contact.lumiquote_quote_total}}
+ * and {{contact.lumiquote_company}}. Created in the CRM account the first time they are needed.
+ */
+const QUOTE_FIELDS = { link: "Lumiquote quote link", total: "Lumiquote quote total", company: "Lumiquote company" } as const;
+type QuoteFieldIds = Record<keyof typeof QUOTE_FIELDS, string>;
+
+async function quoteFieldIds(): Promise<QuoteFieldIds> {
+  const saved = await getSetting<QuoteFieldIds>("crmQuoteFields");
+  if (saved?.link && saved.total && saved.company) return saved;
+  const existing = await listContactFields();
+  const ids = {} as QuoteFieldIds;
+  for (const key of Object.keys(QUOTE_FIELDS) as (keyof typeof QUOTE_FIELDS)[]) {
+    const name = QUOTE_FIELDS[key];
+    ids[key] = existing.find((field) => field.name.toLowerCase() === name.toLowerCase())?.id ?? (await createContactField(name));
+  }
+  await setSetting("crmQuoteFields", ids);
+  return ids;
+}
+
+/** Put the quote's link, total and the installer's name on the contact, for the reminder message to use. */
+async function saveQuoteFields(contactId: string, installer: Installer, lead: Lead, origin: string): Promise<void> {
+  if (!lead.quote) return;
+  const ids = await quoteFieldIds();
+  await setContactFields(contactId, [
+    { id: ids.link, value: `${origin}/r/${lead.publicToken}` },
+    { id: ids.total, value: usd(lead.quote.total) },
+    { id: ids.company, value: installer.companyName },
+  ]);
+}
+
 export type CrmEvent = "lead.created" | "quote.sent" | "quote.accepted" | "quote.declined" | "status.changed";
 
 /** Push one lead's current state to the CRM. Never throws: the result, or the error, is saved on the lead. */
@@ -89,6 +125,19 @@ export async function pushLeadToCrm(installer: Installer, lead: Lead, event: Crm
     const value = lead.quote?.total;
     if (stageId || value !== undefined) await updateOpportunity(crm.opportunityId, { stageId, value });
 
+    if (crm.contactId && lead.quote && (event === "quote.sent" || event === "lead.created")) {
+      await saveQuoteFields(crm.contactId, installer, lead, origin).catch((err) => console.warn("CRM quote fields failed:", err.message));
+    }
+    // The customer answered, the job moved on, or a new quote restarts the clock: take the reminder tag off.
+    if (crm.contactId && crm.followUpAt && (lead.status !== "quoted" || event === "quote.sent")) {
+      try {
+        await removeTags(crm.contactId, [FOLLOW_UP_TAG]);
+        delete crm.followUpAt;
+      } catch (err) {
+        // Left in place for the scheduled job to retry; a stuck tag must not mark the whole lead as unsynced.
+        console.warn(`CRM follow-up tag not removed for lead ${lead.id}:`, (err as Error).message);
+      }
+    }
     if (crm.contactId && event === "quote.sent" && lead.quote) {
       await addNote(crm.contactId, `Quote sent through Lumiquote: ${usd(lead.quote.total)}.\nCustomer page: ${origin}/r/${lead.publicToken}`).catch(() => {});
     }
@@ -120,12 +169,14 @@ export interface PullResult {
   checked: number;
   updated: number;
   imported: number;
+  /** Quotes that had gone unanswered and were tagged for a reminder on this run. */
+  followedUp: number;
   error?: string;
 }
 
 /** Read the installer's pipeline and bring booked, completed and lost jobs into the dashboard. */
 export async function pullFromCrm(installer: Installer): Promise<PullResult> {
-  const result: PullResult = { installer: installer.companyName, checked: 0, updated: 0, imported: 0 };
+  const result: PullResult = { installer: installer.companyName, checked: 0, updated: 0, imported: 0, followedUp: 0 };
   if (!crmActive(installer)) return result;
   const config = installer.crm;
   try {
@@ -181,11 +232,71 @@ async function importBookedJob(installer: Installer, opp: Awaited<ReturnType<typ
             '[]'::jsonb, ${j({ status: "none", regen: 0, colors: {} })}::jsonb, ${j(quote)}::jsonb, NULL, ${notes}, ${j(crm)}::jsonb)`;
 }
 
-/** Run the inbound sync for every installer that has a CRM link. */
+/**
+ * Tag the contact of every quote that has sat unanswered for the installer's follow-up period, so a CRM workflow
+ * can send the reminder. Each quote is chased once. Also takes the tag off contacts whose job has since moved on
+ * without passing through a push (booked in the CRM, for example). Returns how many were tagged.
+ */
+export async function followUpQuotes(installer: Installer): Promise<number> {
+  if (!crmActive(installer)) return 0;
+  const config = installer.crm;
+  const save = (id: string, crm: LeadCrm) => sql()`UPDATE leads SET crm = ${j(crm)}::jsonb WHERE id = ${id}`;
+
+  const stale = await sql()`
+    SELECT id, crm FROM leads
+    WHERE installer_id = ${installer.id} AND status <> 'quoted' AND crm->>'followUpAt' IS NOT NULL AND crm->>'contactId' IS NOT NULL
+    LIMIT 25`;
+  for (const row of stale) {
+    const crm: LeadCrm = { ...row.crm };
+    try {
+      await removeTags(crm.contactId!, [FOLLOW_UP_TAG]);
+      delete crm.followUpAt;
+      await save(row.id, crm);
+    } catch (err) {
+      console.warn(`CRM follow-up tag not removed for lead ${row.id}:`, (err as Error).message);
+    }
+  }
+
+  if (!(config.followUpDays > 0)) return 0;
+  const due = await sql()`
+    SELECT id, crm, quote->>'sentAt' AS sent_at, (quote->>'total')::numeric AS total FROM leads
+    WHERE installer_id = ${installer.id} AND status = 'quoted'
+      AND crm->>'contactId' IS NOT NULL AND crm->>'followUpAt' IS NULL
+      AND quote->>'sentAt' IS NOT NULL
+      AND (quote->>'sentAt')::timestamptz <= now() - (${config.followUpDays}::int * interval '1 day')
+      AND (quote->>'sentAt')::timestamptz >= ${config.since}::timestamptz
+      AND crm->>'followUpFor' IS DISTINCT FROM quote->>'sentAt'
+    ORDER BY created_at
+    LIMIT 25`;
+  let tagged = 0;
+  for (const row of due) {
+    const crm: LeadCrm = { ...row.crm };
+    try {
+      await addTags(crm.contactId!, [FOLLOW_UP_TAG]);
+      crm.followUpAt = new Date().toISOString();
+      crm.followUpFor = row.sent_at;
+      await save(row.id, crm);
+      tagged += 1;
+      const days = `${config.followUpDays} day${config.followUpDays === 1 ? "" : "s"}`;
+      await addNote(crm.contactId!, `Lumiquote: the ${usd(Number(row.total))} quote has had no answer for ${days}. Tagged "${FOLLOW_UP_TAG}" for a reminder.`).catch(() => {});
+    } catch (err) {
+      console.warn(`CRM follow-up tag failed for lead ${row.id}:`, (err as Error).message);
+    }
+  }
+  return tagged;
+}
+
+/** Run the inbound sync, then the quote follow-ups, for every installer that has a CRM link. */
 export async function pullAll(installers: Installer[]): Promise<PullResult[]> {
   const results: PullResult[] = [];
   for (const installer of installers) {
-    if (installer.status === "active" && crmActive(installer)) results.push(await pullFromCrm(installer));
+    if (installer.status !== "active" || !crmActive(installer)) continue;
+    const result = await pullFromCrm(installer);
+    result.followedUp = await followUpQuotes(installer).catch((err) => {
+      console.error(`CRM follow-ups failed for ${installer.companyName}:`, err.message);
+      return 0;
+    });
+    results.push(result);
   }
   return results;
 }

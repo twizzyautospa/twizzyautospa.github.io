@@ -83,8 +83,9 @@ function crmCard(crm, results) {
       <dt>Last push</dt><dd>${crm.lastPushAt ? timeAgo(crm.lastPushAt) : "Nothing sent yet"}</dd>
     </dl>
     <p class="small muted">New requests, quotes and bookings are pushed to the pipeline as they happen. Jobs booked, completed or lost in the pipeline are pulled in every 15 minutes.</p>
+    <p class="small muted">Quote follow-ups: when a quote goes unanswered for an installer's follow-up period, its contact gets the tag <strong>lumiquote-quote-followup</strong>, which a GoHighLevel workflow can use to send a reminder. The tag comes off when the customer accepts or declines.</p>
     <div><button type="button" class="btn btn-secondary" id="crm-sync" ${raw(crm.tokenSet && crm.installers ? "" : "disabled")}>Pull from pipeline now</button></div>
-    ${results ? html`<ul class="tips">${results.length ? results.map((r) => html`<li>${r.installer}: ${r.error ? html`<span style="color:var(--bad)">${r.error}</span>` : `checked ${r.checked}, updated ${r.updated}, added ${r.imported}`}</li>`) : html`<li>No linked installers.</li>`}</ul>` : ""}`;
+    ${results ? html`<ul class="tips">${results.length ? results.map((r) => html`<li>${r.installer}: ${r.error ? html`<span style="color:var(--bad)">${r.error}</span>` : `checked ${r.checked}, updated ${r.updated}, added ${r.imported}, followed up ${r.followedUp ?? 0}`}</li>`) : html`<li>No linked installers.</li>`}</ul>` : ""}`;
 }
 
 /* ---------- installers ---------- */
@@ -228,6 +229,9 @@ function renderCrmLink(installer, pipelineId) {
             </select></label>`)}
       </div>
       <label class="row"><input type="checkbox" name="importBooked" ${raw(saved?.importBooked === false ? "" : "checked")} style="width:20px;height:20px"> <span>Also bring in jobs booked in the CRM that did not start as a quote request</span></label>
+      <label class="field"><span>Follow up unanswered quotes after (days)</span>
+        <input type="number" name="followUpDays" min="0" max="30" step="1" value="${saved?.followUpDays ?? 2}">
+        <span class="hint">The contact is tagged <strong>lumiquote-quote-followup</strong> so a workflow can send a reminder. 0 turns this off.</span></label>
       <p class="small muted">Only changes made after linking are synced, so old history is not copied in.</p>` : ""}
     <div><button type="submit" class="btn btn-secondary">${pipeline ? "Save CRM link" : installer.crm ? "Remove CRM link" : "Save"}</button></div>`);
 }
@@ -406,7 +410,7 @@ document.addEventListener("submit", async (event) => {
     if (pipelineId) {
       const stages = Object.fromEntries(CRM_STAGES.map(([key]) => [key, data.get(`stage-${key}`) || ""]));
       if (Object.values(stages).some((id) => !id)) return toast("Choose a stage for each step", "error");
-      crm = { provider: "ghl", pipelineId, stages, importBooked: data.get("importBooked") === "on" };
+      crm = { provider: "ghl", pipelineId, stages, importBooked: data.get("importBooked") === "on", followUpDays: Number(data.get("followUpDays")) };
       if (installer?.crm?.pipelineId === pipelineId) crm.since = installer.crm.since;
     }
     await busy(form.querySelector('button[type="submit"]'), async () => {

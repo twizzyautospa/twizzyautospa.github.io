@@ -182,6 +182,39 @@ export async function listPipelines(): Promise<Pipeline[]> {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export async function addTags(contactId: string, tags: string[]): Promise<void> {
+  await request("POST", `/contacts/${encodeURIComponent(contactId)}/tags`, { tags });
+}
+
+export async function removeTags(contactId: string, tags: string[]): Promise<void> {
+  await request("DELETE", `/contacts/${encodeURIComponent(contactId)}/tags`, { tags });
+}
+
+/** Contact custom fields in the account, by name. */
+export async function listContactFields(): Promise<{ id: string; name: string }[]> {
+  const data = await request("GET", `/locations/${encodeURIComponent(location())}/customFields`);
+  const fields: any[] = Array.isArray(data?.customFields) ? data.customFields : [];
+  return fields
+    .filter((field) => (field.model ?? "contact") === "contact")
+    .map((field) => ({ id: String(field.id ?? ""), name: String(field.name ?? "").trim() }))
+    .filter((field) => field.id);
+}
+
+/** Add a plain text custom field for contacts and return its id. */
+export async function createContactField(name: string): Promise<string> {
+  const data = await request("POST", `/locations/${encodeURIComponent(location())}/customFields`, { name, dataType: "TEXT", model: "contact" });
+  const id = data?.customField?.id ?? data?.id;
+  if (!id) throw new GhlError(502, "CRM did not return the new field");
+  return String(id);
+}
+
+export async function setContactFields(contactId: string, fields: { id: string; value: string }[]): Promise<void> {
+  if (!fields.length) return;
+  await request("PUT", `/contacts/${encodeURIComponent(contactId)}`, {
+    customFields: fields.map((field) => ({ id: field.id, field_value: field.value })),
+  });
+}
+
 export async function addNote(contactId: string, body: string): Promise<void> {
   await request("POST", `/contacts/${encodeURIComponent(contactId)}/notes`, { body: body.slice(0, 4000) });
 }
