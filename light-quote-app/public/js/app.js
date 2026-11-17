@@ -291,6 +291,7 @@ function renderQuote() {
       <button type="button" class="btn btn-sm btn-ghost" id="reset-items">Reset to suggested</button>
     </div>
     <div class="total-row"><span>Total</span><strong id="quote-total">${money(total, true)}</strong></div>
+    <p class="hint" id="next-year-hint" ${raw(nextYearOf(total) ? "" : "hidden")}>${nextYearText(total)}</p>
     <div>
       <label class="field"><span>Offer an install date</span>
         <span class="copy-row"><input type="date" id="date-input" min="${new Date().toISOString().slice(0, 10)}"><button type="button" class="btn btn-secondary" id="add-date">Add</button></span>
@@ -305,6 +306,25 @@ function renderQuote() {
     <label class="field"><span>Note to the customer</span><textarea id="quote-note" placeholder="Optional. What's included, lease terms, takedown date…">${draft.note}</textarea></label>
     <button type="button" class="btn btn-lg" id="send-quote">${lead.quote ? "Save changes to quote" : "Save quote"}</button>
     ${lead.quote ? "" : html`<p class="hint">Saving creates the customer's quote page. You then text them the link.</p>`}`);
+}
+
+/** For a first-time setup: about what the customer pays next year, without buying lights again. 0 when not shown. */
+function nextYearOf(total) {
+  const lights = (draft?.items || []).reduce((sum, item) => sum + Math.max(0, lineTotal(item)) * (item.lightsShare || 0), 0);
+  if (lights <= 0) return 0;
+  const price = Math.max(account.settings.pricing.minimumJob, Math.round(total - lights));
+  return price < total ? price : 0;
+}
+
+const nextYearText = (total) =>
+  nextYearOf(total) ? `First-time setup: their quote also shows next year's price for installation and takedown only, about ${money(nextYearOf(total))}.` : "";
+
+function showNextYear() {
+  const hint = $("#next-year-hint");
+  if (!hint) return;
+  const total = draftTotal();
+  hint.textContent = nextYearText(total);
+  hint.hidden = !nextYearOf(total);
 }
 
 /** Links for getting the quote to the customer. Empty until a quote exists. */
@@ -362,6 +382,7 @@ page.addEventListener("input", (event) => {
   readDraftInputs();
   $(".line-total", row).textContent = money(lineTotal(draft.items[Number(row.dataset.item)]), true);
   $("#quote-total").textContent = money(draftTotal(), true);
+  showNextYear();
 });
 
 page.addEventListener("click", async (event) => {

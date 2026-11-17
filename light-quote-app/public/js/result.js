@@ -110,7 +110,7 @@ function priceCard() {
       <section class="card stack">
         <p class="notice notice-good"><strong>You're booked.</strong> ${company} will be in touch to confirm the details.</p>
         ${lead.booking ? html`<div><div class="section-title">Install date</div><div class="price" style="font-size:1.4rem">${dateOnly(lead.booking.date)}</div></div>` : ""}
-        ${lead.quote ? quoteTable(lead.quote) : ""}
+        ${lead.quote ? html`${quoteTable(lead.quote)}${nextYearNote(lead.quote)}` : ""}
       </section>`;
   }
 
@@ -129,6 +129,7 @@ function priceCard() {
           <p class="small muted">${describeRequest(lead.selections)}</p>
         </div>
         ${quoteTable(q)}
+        ${nextYearNote(q)}
         ${q.note ? html`<p class="notice notice-info" style="white-space:pre-line">${q.note}</p>` : ""}
         <form id="accept-form" class="stack">
           <div>
@@ -153,6 +154,12 @@ function priceCard() {
           <div class="price">${same ? html`From ${money(lead.estimate.low)}` : html`${money(lead.estimate.low)} – ${money(lead.estimate.high)}`}</div>
           <p class="small muted">${describeRequest(lead.selections)}</p>
         </div>
+        ${lead.nextYear ? html`
+          <div class="next-year">
+            <strong>Next year costs less.</strong>
+            <span>You only buy the lights once. From next year you pay for installation and takedown only: about
+              <b>${lead.nextYear.low === lead.nextYear.high ? money(lead.nextYear.low) : html`${money(lead.nextYear.low)} – ${money(lead.nextYear.high)}`}</b> at today's rates.</span>
+          </div>` : ""}
         ${lead.breakdown?.length ? html`
           <div>
             <div class="field-label">How this is worked out</div>
@@ -181,6 +188,17 @@ function quoteTable(q) {
       <tbody>${q.items.map(itemRow)}</tbody>
       <tfoot><tr><td>Total</td><td class="num">${money(q.total, true)}</td></tr></tfoot>
     </table>`;
+}
+
+/** First-time setups: the lights are bought once, so the same job is cheaper from the second year on. */
+function nextYearNote(q) {
+  if (!q.nextYear || q.nextYear >= q.total) return "";
+  return html`
+    <div class="next-year">
+      <strong>Next year costs less.</strong>
+      <span>The lights are yours to keep. Next year you pay for installation and takedown only: about
+        <b>${money(q.nextYear)}</b> at today's rates. That is <b>${money(q.total - q.nextYear)} less</b> than this year.</span>
+    </div>`;
 }
 
 /** The same lines for an estimate, without a total: the price range above is the figure to go by. */

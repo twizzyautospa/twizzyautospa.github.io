@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  buildQuote, cleanItems, cleanWebhookUrl, computeEstimate, DEFAULT_SETTINGS, estimateBreakdown, normalizeSelections, normalizeSettings, suggestedItems,
+  buildQuote, cleanItems, cleanWebhookUrl, computeEstimate, DEFAULT_SETTINGS, estimateBreakdown, nextYearPrice, normalizeSelections, normalizeSettings, suggestedItems,
 } from "../netlify/lib/pricing.mts";
 import { cleanMeasurement } from "../netlify/lib/leads.mts";
 import { sniffImage } from "../netlify/lib/files.mts";
@@ -147,4 +147,27 @@ test("the estimate breakdown is only shown when it adds up to the estimate", () 
   // A job under the minimum is shown as the minimum, which the lines would not add up to.
   const small = normalizeSelections({ service: "trees", shrubs: 1 });
   assert.deepEqual(estimateBreakdown(small, DEFAULT_SETTINGS, computeEstimate(small, DEFAULT_SETTINGS)), []);
+});
+
+test("first-time customers see what next year costs without buying the lights again", () => {
+  const s = normalizeSelections({ service: "full", homeSize: "medium", stories: 2, plan: "full", trees: { medium: 1 } });
+  const items = suggestedItems(s, DEFAULT_SETTINGS, 94);
+  // This year 94 x (3 + 7.2 + 1.8) + 140 = 1,268. Next year 94 x 9 + 100 = 946.
+  assert.equal(buildQuote(items, [], "").total, 1268);
+  assert.equal(nextYearPrice(items), 946);
+  assert.equal(buildQuote(items, [], "").nextYear, 946);
+  // The installer lowers the installation rate: next year follows the lines, not a fixed proportion.
+  const edited = items.map((i) => (i.label.startsWith("Roofline installation") ? { ...i, unitPrice: 6 } : i));
+  assert.equal(nextYearPrice(edited), 833); // 94 x (6 + 1.8) + 100 = 833.20
+  // The lights share survives a round trip through the quote builder, and bad values are dropped.
+  assert.equal(cleanItems(items)[0].lightsShare, 1);
+  assert.equal("lightsShare" in cleanItems([{ label: "Timer", qty: 1, unit: "each", unitPrice: 25, lightsShare: "lots" }])[0], false);
+  // Customers who already own lights have no cheaper second year to show.
+  const own = suggestedItems({ ...s, plan: "installTakedown" }, DEFAULT_SETTINGS, 94);
+  assert.equal(nextYearPrice(own), undefined);
+  assert.equal("nextYear" in buildQuote(own, [], ""), false);
+  // Next year is still subject to the minimum job, and is hidden when that leaves no saving.
+  const tiny = suggestedItems(normalizeSelections({ service: "roofline", plan: "full" }), DEFAULT_SETTINGS, 36);
+  assert.equal(buildQuote(tiny, [], "", false, 350).nextYear, 350); // 36 x 10.5 = 378 this year, 270 next
+  assert.equal(nextYearPrice(suggestedItems(normalizeSelections({ service: "roofline", plan: "full" }), DEFAULT_SETTINGS, 30), 350), undefined);
 });

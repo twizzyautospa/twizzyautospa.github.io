@@ -170,6 +170,8 @@ export function customerView(lead: Lead, installer: Installer) {
   const mode = installer.settings.priceMode;
   // A custom request has no standard price, so nothing is shown until the installer quotes it.
   const showEstimate = mode !== "hidden" && lead.estimate !== null && lead.selections.plan !== "other";
+  // First-time setups: the same job next year, without buying the lights again.
+  const later = showEstimate && lead.selections.plan === "full" ? computeEstimate({ ...lead.selections, plan: "installTakedown" }, installer.settings) : null;
   return {
     installer: publicInstaller(installer),
     lead: {
@@ -181,6 +183,7 @@ export function customerView(lead: Lead, installer: Installer) {
       selections: lead.selections,
       estimate: showEstimate ? { low: lead.estimate!.low, high: lead.estimate!.high } : null,
       /** How the estimate is made up, so the customer sees what each part costs before the exact quote. */
+      nextYear: later && later.high < lead.estimate!.high ? { low: later.low, high: later.high } : null,
       breakdown: showEstimate ? estimateBreakdown(lead.selections, installer.settings, lead.estimate!) : [],
       photos: lead.photos.map((name) => fileUrl(lead, name, true)),
       previews: {
@@ -296,7 +299,7 @@ export async function createLead(installer: Installer, input: NewLead, origin: s
     const subtotal = items.reduce((sum, item) => sum + item.qty * item.unitPrice, 0);
     const minimum = installer.settings.pricing.minimumJob;
     if (subtotal < minimum) items.push({ label: "Minimum service charge", qty: 1, unit: "", unitPrice: Math.round((minimum - subtotal) * 100) / 100 });
-    quote = buildQuote(items, [], "", true);
+    quote = buildQuote(items, [], "", true, minimum);
     status = "quoted";
   }
   let booking: Lead["booking"] = null;

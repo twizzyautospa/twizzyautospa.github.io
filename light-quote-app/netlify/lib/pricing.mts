@@ -187,6 +187,8 @@ export interface QuoteItem {
   qty: number;
   unit: string;
   unitPrice: number;
+  /** How much of this line pays for lights the customer keeps, from 0 to 1. Absent when none of it does. */
+  lightsShare?: number;
 }
 
 const wantsRoofline = (s: Selections) => s.service !== "trees";
@@ -233,7 +235,8 @@ export function suggestedItems(s: Selections, settings: InstallerSettings, feet?
       takedown: { label: `Roofline takedown${storyNote}`, unitPrice: money(p.takedownPerFt * labour) },
     };
     for (const part of parts) {
-      if (lines[part].unitPrice > 0) items.push({ label: lines[part].label, qty: length, unit: "ft", unitPrice: lines[part].unitPrice });
+      if (lines[part].unitPrice <= 0) continue;
+      items.push({ label: lines[part].label, qty: length, unit: "ft", unitPrice: lines[part].unitPrice, ...(part === "lights" ? { lightsShare: 1 } : {}) });
     }
   }
   if (wantsTrees(s)) {
@@ -242,8 +245,11 @@ export function suggestedItems(s: Selections, settings: InstallerSettings, feet?
     const rate: Record<Part, number> = { lights: p.lightsPerFt, install: p.installPerFt, takedown: p.takedownPerFt };
     const whole = rate.lights + rate.install + rate.takedown;
     const portion = whole > 0 ? parts.reduce((sum, part) => sum + rate[part], 0) / whole : 1;
+    const lightsShare = whole > 0 && parts.includes("lights") ? Math.round((rate.lights / whole) * 10_000) / 10_000 : 0;
     const line = (label: string, qty: number, price: number) => {
-      if (qty) items.push({ label: `${label}, ${TREE_SUFFIX[s.plan] ?? TREE_SUFFIX.full}`, qty, unit: "each", unitPrice: portion === 1 ? price : Math.round(price * portion) });
+      if (!qty) return;
+      const unitPrice = portion === 1 ? price : Math.round(price * portion);
+      items.push({ label: `${label}, ${TREE_SUFFIX[s.plan] ?? TREE_SUFFIX.full}`, qty, unit: "each", unitPrice, ...(lightsShare > 0 ? { lightsShare } : {}) });
     };
     line("Small tree wrap", s.trees.small, p.treeSmall);
     line("Medium tree wrap", s.trees.medium, p.treeMedium);
@@ -283,9 +289,24 @@ export function estimateBreakdown(s: Selections, settings: InstallerSettings, es
   return total >= estimate.low && total <= estimate.high ? items : [];
 }
 
+/**
+ * What a first-time customer would pay next year for the same job, when the lights are already theirs: this
+ * quote's lines without the part of each that pays for lights. Undefined when the quote has no lights in it, or
+ * when the minimum job leaves no saving to show.
+ */
+export function nextYearPrice(items: QuoteItem[], minimumJob = 0): number | undefined {
+  const lights = items.reduce((sum, item) => sum + Math.max(0, item.qty * item.unitPrice) * (item.lightsShare ?? 0), 0);
+  if (lights <= 0) return undefined;
+  const total = Math.max(0, itemsTotal(items));
+  const price = Math.max(minimumJob, Math.round(total - lights));
+  return price < total ? price : undefined;
+}
+
 export interface Quote {
   items: QuoteItem[];
   total: number;
+  /** For first-time setups: about what the same job costs next year without buying lights again. */
+  nextYear?: number;
   dates: string[];
   note: string;
   sentAt: string;
@@ -296,20 +317,26 @@ export function cleanItems(input: unknown): QuoteItem[] {
   if (!Array.isArray(input)) return [];
   return input
     .slice(0, 30)
-    .map((raw: any) => ({
-      label: str(raw?.label, 120),
-      qty: num(raw?.qty, 0, 100_000, 0),
-      unit: str(raw?.unit, 12),
-      unitPrice: num(raw?.unitPrice, -100_000, 100_000, 0),
-    }))
+    .map((raw: any) => {
+      const lightsShare = num(raw?.lightsShare, 0, 1, 0);
+      return {
+        label: str(raw?.label, 120),
+        qty: num(raw?.qty, 0, 100_000, 0),
+        unit: str(raw?.unit, 12),
+        unitPrice: num(raw?.unitPrice, -100_000, 100_000, 0),
+        ...(lightsShare > 0 ? { lightsShare } : {}),
+      };
+    })
     .filter((item) => item.label && item.qty > 0);
 }
 
-export function buildQuote(items: QuoteItem[], dates: string[], note: string, auto = false): Quote {
+export function buildQuote(items: QuoteItem[], dates: string[], note: string, auto = false, minimumJob = 0): Quote {
   const total = Math.max(0, itemsTotal(items));
+  const later = nextYearPrice(items, minimumJob);
   return {
     items,
     total,
+    ...(later === undefined ? {} : { nextYear: later }),
     dates,
     note,
     sentAt: new Date().toISOString(),

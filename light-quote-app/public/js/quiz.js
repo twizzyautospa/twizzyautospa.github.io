@@ -67,9 +67,9 @@ const RENDER = {
     </div>`,
 
   plan: () => html`
-    ${head("What do you need from us?", "This decides what you pay for. First-time setups include the lights, which are yours to reuse next year.")}
+    ${head("What do you need from us?", "This decides what you pay for. You only buy the lights once, so the second year costs less.")}
     <div class="choices choices-list" role="radiogroup" aria-label="What you need">
-      ${choice("plan", "full", state.selections.plan, html`${raw(ICONS.planFull)}<span class="choice-text"><strong>Lights, installation and takedown</strong><small>We supply the lights, put them up and take them down</small></span>`)}
+      ${choice("plan", "full", state.selections.plan, html`${raw(ICONS.planFull)}<span class="choice-text"><strong>Lights, installation and takedown</strong><small>We supply the lights, put them up and take them down</small><em class="choice-tag">Costs less next year</em></span>`)}
       ${choice("plan", "installTakedown", state.selections.plan, html`${raw(ICONS.planBoth)}<span class="choice-text"><strong>Installation and takedown</strong><small>You already have the lights</small></span>`)}
       ${choice("plan", "install", state.selections.plan, html`${raw(ICONS.planInstall)}<span class="choice-text"><strong>Installation only</strong><small>You have the lights and take them down yourself</small></span>`)}
       ${choice("plan", "other", state.selections.plan, html`${raw(ICONS.planOther)}<span class="choice-text"><strong>Something else</strong><small>Tell us exactly what you need</small></span>`)}
