@@ -704,6 +704,11 @@ page.addEventListener("change", async (event) => {
 function previewKeyPanel() {
   const key = account.previewKey;
   const used = account.previewUsage;
+  if (!account.ownKeysAllowed) {
+    return html`
+      ${account.previewsAvailable ? "" : html`<p class="notice notice-warn">Previews are not switched on for this platform yet, so customers will not see one.</p>`}
+      <p class="small muted">Preview images made this month: <strong>${used.images}</strong>. One is made per request; another only when a colour is tapped.</p>`;
+  }
   const status = account.previewSource === "own"
     ? html`<p class="notice notice-good">Previews run on your Google AI key ending <strong>${key.hint}</strong>. Google bills you a few cents per image.</p>`
     : account.previewSource === "platform"

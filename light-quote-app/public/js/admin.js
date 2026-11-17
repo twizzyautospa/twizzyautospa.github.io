@@ -70,15 +70,20 @@ async function showOverview() {
       </section>
       <section class="card stack">
         <div class="section-title" style="margin:0">Lighting previews</div>
-        <p class="small muted">One image is made per request, in the customer's chosen colour. Another is made only when a colour is tapped. Each installer can have their own Google AI key (Installers → Manage), so Google bills them and not you.</p>
+        <p class="small muted">One image is made per request, in the customer's chosen colour. Another is made only when a colour is tapped.</p>
         <label class="field"><span>Picture quality</span>
           <select id="platform-quality">
             <option value="standard" ${raw(platform.previewQuality === "standard" ? "selected" : "")}>Standard, about ${cents(overview.previewModels.standard.usd)} an image</option>
             <option value="economy" ${raw(platform.previewQuality === "economy" ? "selected" : "")}>Economy, about ${cents(overview.previewModels.economy.usd)} an image</option>
           </select>
           <span class="hint">Google's list prices. Economy uses a lighter model: check a few previews before leaving it on.</span></label>
-        <label class="row"><input type="checkbox" id="platform-fallback" ${raw(platform.previewFallback ? "checked" : "")} style="width:20px;height:20px"> <span>Installers without their own key use the platform's AI allowance (you pay)</span></label>
-        <p class="small muted">${overview.previewsAvailable ? "Untick this and installers without a key get no previews." : "The platform has no AI allowance of its own right now, so only installers with a key get previews."}</p>
+        <label class="row"><input type="checkbox" id="platform-ownkeys" ${raw(platform.ownKeys ? "checked" : "")} style="width:20px;height:20px"> <span>Let installers run previews on their own Google AI key</span></label>
+        <p class="small muted">${platform.ownKeys
+          ? "On: add a key for each installer under Installers → Manage, or they add it in their Settings. Google then bills them, not you."
+          : "Off: every preview runs on the platform's AI allowance (Netlify), and installers see nothing about keys."}</p>
+        ${platform.ownKeys ? html`
+          <label class="row"><input type="checkbox" id="platform-fallback" ${raw(platform.previewFallback ? "checked" : "")} style="width:20px;height:20px"> <span>Installers without their own key use the platform's AI allowance (you pay)</span></label>
+          <p class="small muted">Untick this and installers without a key get no previews.</p>` : ""}
         <div><button type="button" class="btn btn-secondary" id="save-previews">Save preview settings</button></div>
       </section>
     </div>
@@ -115,7 +120,7 @@ async function showInstallers() {
           <tbody>
             ${installers.map((i) => html`
               <tr>
-                <td><strong>${i.companyName}</strong>${i.crmLinked ? html` <span class="pill pill-new">CRM linked</span>` : ""}${i.previewKeySet ? html` <span class="pill pill-active">Own AI key</span>` : ""}<div class="small muted">Signs in as <strong>${i.username}</strong>${i.canSignIn ? "" : html` · <span style="color:var(--bad)">no password set</span>`}</div></td>
+                <td><strong>${i.companyName}</strong>${i.crmLinked ? html` <span class="pill pill-new">CRM linked</span>` : ""}${platform.ownKeys && i.previewKeySet ? html` <span class="pill pill-active">Own AI key</span>` : ""}<div class="small muted">Signs in as <strong>${i.username}</strong>${i.canSignIn ? "" : html` · <span style="color:var(--bad)">no password set</span>`}</div></td>
                 <td><button type="button" class="btn btn-sm btn-ghost" data-copy="${i.quoteLink}">/q/${i.slug}</button></td>
                 <td class="right num">${i.leadCount}</td>
                 <td class="right num">${i.bookedCount}</td>
@@ -181,7 +186,7 @@ function openManage(id) {
         <div class="section-title" style="margin:0">GoHighLevel pipeline</div>
         <div id="crm-link-body" class="stack"><p class="small muted">Loading pipelines…</p></div>
       </form>
-      <form class="card card-flat stack" id="preview-key-form" data-id="${i.id}" novalidate>
+      <form class="card card-flat stack" id="preview-key-form" data-id="${i.id}" novalidate ${raw(platform.ownKeys ? "" : "hidden")}>
         <div class="section-title" style="margin:0">Lighting previews</div>
         <p class="small muted">${i.previewKeySet
           ? "This installer has their own Google AI key, so Google bills them for previews."
@@ -365,8 +370,9 @@ document.addEventListener("click", async (event) => {
   }
   if (target.id === "save-previews") {
     return busy(target, async () => {
-      setPlatform(await api("admin/platform", { method: "PUT", body: { previewQuality: $("#platform-quality").value, previewFallback: $("#platform-fallback").checked } }));
+      setPlatform(await api("admin/platform", { method: "PUT", body: { previewQuality: $("#platform-quality").value, ownKeys: $("#platform-ownkeys").checked, ...($("#platform-fallback") ? { previewFallback: $("#platform-fallback").checked } : {}) } }));
       toast("Preview settings saved");
+      await showOverview();
     });
   }
   const removeKey = closest("[data-remove-key]");

@@ -393,6 +393,7 @@ async function installerAccount(installer: Installer, ctx: Ctx) {
     previewsAvailable: source !== "none",
     /** "own": their Google key pays. "platform": the platform's allowance pays. "none": no previews. */
     previewSource: source,
+    ownKeysAllowed: (await getPlatform()).ownKeys,
     previewKey: await previewKeyInfo(installer),
     previewUsage: await previewUsage(installer.id),
     crmLinked: crmActive(installer),
@@ -436,6 +437,7 @@ async function installerRoutes(ctx: Ctx): Promise<Response> {
 
   // Save, replace or remove the installer's own Google AI key for previews.
   if (resource === "preview-key" && (req.method === "PUT" || req.method === "DELETE")) {
+    if (!(await getPlatform()).ownKeys) fail(403, "Using your own Google AI key is not switched on");
     await savePreviewKey(installer.id, req.method === "DELETE" ? null : String((await readJson(req)).key ?? ""));
     return json(await installerAccount((await installerById(installer.id))!, ctx));
   }

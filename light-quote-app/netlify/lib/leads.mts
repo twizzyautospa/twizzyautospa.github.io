@@ -63,8 +63,10 @@ export function toInstaller(row: any): Installer {
 
 /** Whose AI allowance an installer's previews run on: their own key, the platform's, or nobody's. */
 export async function previewSource(installer: Installer): Promise<"own" | "platform" | "none"> {
-  if (installer.previewKey) return "own";
-  return (await getPlatform()).previewFallback && previewProvider() !== "off" ? "platform" : "none";
+  const platform = await getPlatform();
+  if (platform.ownKeys && installer.previewKey) return "own";
+  // With own keys switched off, every installer is on the platform's allowance.
+  return (!platform.ownKeys || platform.previewFallback) && previewProvider() !== "off" ? "platform" : "none";
 }
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);

@@ -43,9 +43,9 @@ export default async (req: Request) => {
   const source = await readFile(leadId, lead.photos[0]);
   if (!installer || !source) return failAll("The photo could not be read");
 
-  const apiKey = await unseal(installer.previewKey);
   const platform = await getPlatform();
-  if (!apiKey && (!platform.previewFallback || previewProvider() === "off")) {
+  const apiKey = platform.ownKeys ? await unseal(installer.previewKey) : "";
+  if (!apiKey && ((platform.ownKeys && !platform.previewFallback) || previewProvider() === "off")) {
     return failAll("No Google AI key is saved for this account");
   }
   const photo = { bytes: Buffer.from(source.bytes), mime: source.mime };
