@@ -6,6 +6,7 @@ import {
   buildQuote,
   COLORS,
   computeEstimate,
+  estimateBreakdown,
   normalizeSettings,
   suggestedItems,
   type Estimate,
@@ -180,7 +181,7 @@ export function customerView(lead: Lead, installer: Installer) {
       selections: lead.selections,
       estimate: showEstimate ? { low: lead.estimate!.low, high: lead.estimate!.high } : null,
       /** How the estimate is made up, so the customer sees what each part costs before the exact quote. */
-      breakdown: showEstimate ? suggestedItems(lead.selections, installer.settings) : [],
+      breakdown: showEstimate ? estimateBreakdown(lead.selections, installer.settings, lead.estimate!) : [],
       photos: lead.photos.map((name) => fileUrl(lead, name, true)),
       previews: {
         status: lead.previews.status,

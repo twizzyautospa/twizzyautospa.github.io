@@ -273,6 +273,16 @@ export function computeEstimate(s: Selections, settings: InstallerSettings): Est
   return { feet: estimateFeet(s, settings), mid: round25(mid), low, high };
 }
 
+/**
+ * The lines behind an estimate, for showing the customer what each part costs. Empty when they would not add up
+ * to the estimate they sit under: prices changed since the request came in, or the job is below the minimum.
+ */
+export function estimateBreakdown(s: Selections, settings: InstallerSettings, estimate: Estimate): QuoteItem[] {
+  const items = suggestedItems(s, settings);
+  const total = itemsTotal(items);
+  return total >= estimate.low && total <= estimate.high ? items : [];
+}
+
 export interface Quote {
   items: QuoteItem[];
   total: number;

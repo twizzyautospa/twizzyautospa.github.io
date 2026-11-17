@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  buildQuote, cleanItems, cleanWebhookUrl, computeEstimate, DEFAULT_SETTINGS, normalizeSelections, normalizeSettings, suggestedItems,
+  buildQuote, cleanItems, cleanWebhookUrl, computeEstimate, DEFAULT_SETTINGS, estimateBreakdown, normalizeSelections, normalizeSettings, suggestedItems,
 } from "../netlify/lib/pricing.mts";
 import { cleanMeasurement } from "../netlify/lib/leads.mts";
 import { sniffImage } from "../netlify/lib/files.mts";
@@ -135,4 +135,16 @@ test("a custom request keeps the customer's words; other plans drop them", () =>
   assert.equal(normalizeSelections({ plan: "install", planNote: "ignored" }).planNote, "");
   assert.equal(normalizeSelections({ plan: "nonsense" }).plan, "full");
   assert.equal(normalizeSelections({}).plan, "full");
+});
+
+test("the estimate breakdown is only shown when it adds up to the estimate", () => {
+  const s = normalizeSelections({ service: "roofline", homeSize: "medium", stories: 2 });
+  const estimate = computeEstimate(s, DEFAULT_SETTINGS);
+  assert.equal(estimateBreakdown(s, DEFAULT_SETTINGS, estimate).length, 3);
+  // Prices went up after the request came in: the stored estimate no longer matches, so no lines.
+  const dearer = normalizeSettings({ pricing: { installPerFt: 12 } });
+  assert.deepEqual(estimateBreakdown(s, dearer, estimate), []);
+  // A job under the minimum is shown as the minimum, which the lines would not add up to.
+  const small = normalizeSelections({ service: "trees", shrubs: 1 });
+  assert.deepEqual(estimateBreakdown(small, DEFAULT_SETTINGS, computeEstimate(small, DEFAULT_SETTINGS)), []);
 });
