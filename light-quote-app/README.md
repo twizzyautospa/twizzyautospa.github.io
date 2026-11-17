@@ -60,6 +60,10 @@ Put `ADMIN_USERNAME`, `ADMIN_PASSWORD` and `PREVIEW_PROVIDER=mock` in a `.env` f
 npm test
 ```
 
+## Pricing and plans
+
+The quiz asks what the customer needs: lights supplied, installed and taken down (a first-time setup); installation and takedown with their own lights; installation only; or something else, described in their own words. Roofline is priced per foot in three parts, each set by the installer in Settings and each its own line on the estimate and the quote: lights (default $3), installation ($6) and takedown ($1.50). The storey multiplier applies to installation and takedown, not the lights. Tree and shrub prices are for all three parts; a customer who needs fewer pays the same share of them as those parts make up of the per-foot rates, to the nearest dollar. A "something else" request shows no estimate and is never auto-quoted; the quote builder starts from the full job for the installer to edit.
+
 ## Lighting previews
 
 The first photo is sent to an image model with a prompt built only from the customer's choices (which areas, how much of the roofline), once per colour. The customer can change the lit areas twice; the installer can remake previews any time. Each lead with a photo makes three images, so preview cost scales with lead volume. Each installer has a daily request cap in Settings, and each device is limited to six requests an hour.
@@ -81,7 +85,7 @@ The first photo is sent to an image model with a prompt built only from the cust
 curl -X POST https://YOUR-SITE/api/inbound/leads \
   -H "Authorization: Bearer lq_..." \
   -H "Content-Type: application/json" \
-  -d '{"name":"Jane Doe","phone":"555-0100","email":"jane@example.com","address":"12 Elm St, Springfield","service":"roofline","bookingDate":"2026-12-01","source":"crm","externalId":"JOB-1042","notes":"Front only"}'
+  -d '{"name":"Jane Doe","phone":"555-0100","email":"jane@example.com","address":"12 Elm St, Springfield","service":"roofline","plan":"installTakedown","bookingDate":"2026-12-01","source":"crm","externalId":"JOB-1042","notes":"Front only"}'
 ```
 
 `name` and one of `phone` or `email` are required. `service` is `roofline`, `trees` or `full`. Sending `bookingDate` (YYYY-MM-DD) files it as booked.

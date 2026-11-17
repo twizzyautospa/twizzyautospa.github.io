@@ -10,16 +10,20 @@ test("roofline estimate uses size, scope and storey multiplier", () => {
   const s = normalizeSelections({ service: "roofline", homeSize: "medium", stories: 2, scope: "front" });
   const e = computeEstimate(s, DEFAULT_SETTINGS);
   assert.equal(e.feet, 110);
-  // 110 ft x $6 x 1.2 = $792, spread 15%, rounded to $25
-  assert.deepEqual([e.low, e.high], [675, 900]);
+  // 110 ft x ($3 lights + ($6 install + $1.50 takedown) x 1.2) = $1,320, spread 15%, rounded to $25
+  assert.deepEqual([e.low, e.high], [1125, 1525]);
 });
 
 test("full house adds trees and shrubs; trees-only ignores the roofline", () => {
   const full = normalizeSelections({ service: "full", homeSize: "small", trees: { small: 2, large: 1 }, shrubs: 3 });
-  assert.deepEqual(suggestedItems(full, DEFAULT_SETTINGS).map((i) => i.label), ["Roofline lighting", "Small tree wrap", "Large tree wrap", "Shrub lighting"]);
+  assert.deepEqual(suggestedItems(full, DEFAULT_SETTINGS).map((i) => i.label), [
+    "Roofline lights, supplied", "Roofline installation", "Roofline takedown",
+    "Small tree wrap, lights included", "Large tree wrap, lights included",
+    "Shrub lighting, lights included",
+  ]);
   const trees = normalizeSelections({ service: "trees", homeSize: "xl", trees: { medium: 1 } });
   assert.equal(computeEstimate(trees, DEFAULT_SETTINGS).feet, 0);
-  assert.deepEqual(suggestedItems(trees, DEFAULT_SETTINGS).map((i) => i.label), ["Medium tree wrap"]);
+  assert.deepEqual(suggestedItems(trees, DEFAULT_SETTINGS).map((i) => i.label), ["Medium tree wrap, lights included"]);
 });
 
 test("minimum job is a floor on the estimate", () => {
@@ -31,7 +35,7 @@ test("minimum job is a floor on the estimate", () => {
 
 test("a measured length replaces the quiz estimate", () => {
   const s = normalizeSelections({ service: "roofline", homeSize: "small" });
-  assert.equal(suggestedItems(s, DEFAULT_SETTINGS, 143.4)[0].qty, 143);
+  assert.deepEqual(suggestedItems(s, DEFAULT_SETTINGS, 143.4).map((i) => i.qty), [143, 143, 143]);
 });
 
 test("selections are clamped and unknown values fall back", () => {
@@ -44,9 +48,9 @@ test("selections are clamped and unknown values fall back", () => {
 });
 
 test("settings merge keeps stored values and rejects bad input", () => {
-  const stored = normalizeSettings({ pricing: { rooflinePerFt: 8 }, brand: { color: "#112233" } });
-  const next = normalizeSettings({ pricing: { rooflinePerFt: "abc", minimumJob: -5 }, brand: { color: "red", logo: "javascript:alert(1)" }, priceMode: "free" }, stored);
-  assert.equal(next.pricing.rooflinePerFt, 8);
+  const stored = normalizeSettings({ pricing: { installPerFt: 8 }, brand: { color: "#112233" } });
+  const next = normalizeSettings({ pricing: { installPerFt: "abc", minimumJob: -5 }, brand: { color: "red", logo: "javascript:alert(1)" }, priceMode: "free" }, stored);
+  assert.equal(next.pricing.installPerFt, 8);
   assert.equal(next.pricing.minimumJob, 0);
   assert.equal(next.brand.color, "#112233");
   assert.equal(next.brand.logo, "");
@@ -100,4 +104,35 @@ test("a CRM link needs a pipeline and all five stages", () => {
   assert.equal(cleanCrmConfig({ provider: "other", pipelineId: "pipeline-1", stages }), null);
   assert.equal(cleanCrmConfig({ provider: "ghl", pipelineId: "../../etc", stages }), null);
   assert.equal(cleanCrmConfig(null), null);
+});
+
+test("each plan pays only for its own parts, one line per part", () => {
+  const lines = (plan) => suggestedItems(normalizeSelections({ service: "roofline", homeSize: "medium", stories: 2, plan }), DEFAULT_SETTINGS);
+  assert.deepEqual(lines("full").map((i) => [i.label, i.qty, i.unitPrice]), [
+    ["Roofline lights, supplied", 110, 3],
+    ["Roofline installation, 2-storey", 110, 7.2],
+    ["Roofline takedown, 2-storey", 110, 1.8],
+  ]);
+  assert.deepEqual(lines("installTakedown").map((i) => i.label), ["Roofline installation, 2-storey", "Roofline takedown, 2-storey"]);
+  assert.deepEqual(lines("install").map((i) => i.label), ["Roofline installation, 2-storey"]);
+  // One storey, all three: $3 + $6 + $1.50 = $10.50 a foot.
+  const single = suggestedItems(normalizeSelections({ service: "roofline", plan: "full" }), DEFAULT_SETTINGS);
+  assert.equal(single.reduce((sum, i) => sum + i.unitPrice, 0), 10.5);
+});
+
+test("tree prices drop by the share of the parts the customer does not need", () => {
+  const price = (plan) => suggestedItems(normalizeSelections({ service: "trees", trees: { medium: 1 }, plan }), DEFAULT_SETTINGS)[0];
+  assert.equal(price("full").unitPrice, 140);
+  assert.equal(price("installTakedown").unitPrice, 100); // 140 x 7.5 / 10.5
+  assert.equal(price("install").unitPrice, 80); // 140 x 6 / 10.5
+  assert.equal(price("install").label, "Medium tree wrap, your lights, install only");
+  // Shares that do not divide evenly are rounded to the dollar: 60 x 7.5 / 10.5 = 42.86.
+  assert.equal(suggestedItems(normalizeSelections({ service: "trees", trees: { small: 1 }, plan: "installTakedown" }), DEFAULT_SETTINGS)[0].unitPrice, 43);
+});
+
+test("a custom request keeps the customer's words; other plans drop them", () => {
+  assert.equal(normalizeSelections({ plan: "other", planNote: "  Takedown only  " }).planNote, "Takedown only");
+  assert.equal(normalizeSelections({ plan: "install", planNote: "ignored" }).planNote, "");
+  assert.equal(normalizeSelections({ plan: "nonsense" }).plan, "full");
+  assert.equal(normalizeSelections({}).plan, "full");
 });

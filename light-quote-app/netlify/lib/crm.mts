@@ -32,7 +32,13 @@ const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 function requestNote(lead: Lead, origin: string): string {
   const s = lead.selections;
   const wants = { roofline: "Roofline", trees: "Trees and shrubs", full: "Full house" }[s.service];
-  const lines = [`Lumiquote request: ${wants}.`];
+  const needs = {
+    full: "Lights supplied, installed and taken down",
+    installTakedown: "Installation and takedown (customer has lights)",
+    install: "Installation only (customer has lights)",
+    other: `Custom request: ${s.planNote || "see notes"}`,
+  }[s.plan];
+  const lines = [`Lumiquote request: ${wants}.`, `Needs: ${needs}.`];
   if (lead.address) lines.push(`Address: ${lead.address}`);
   if (lead.estimate) lines.push(`Estimate shown: ${usd(lead.estimate.low)} to ${usd(lead.estimate.high)}`);
   if (s.notes) lines.push(`Customer note: ${s.notes}`);

@@ -153,6 +153,12 @@ function priceCard() {
           <div class="price">${same ? html`From ${money(lead.estimate.low)}` : html`${money(lead.estimate.low)} – ${money(lead.estimate.high)}`}</div>
           <p class="small muted">${describeRequest(lead.selections)}</p>
         </div>
+        ${lead.breakdown?.length ? html`
+          <div>
+            <div class="field-label">How this is worked out</div>
+            ${itemRows(lead.breakdown)}
+            <p class="small muted" style="margin-top:8px">Sizes are estimated from your answers. The exact amounts come with your quote.</p>
+          </div>` : ""}
         <p class="notice notice-info"><strong>What happens next:</strong> ${company} measures your roofline and sends your exact price to this page${lead.firstName ? html`, ${lead.firstName}` : ""}. Keep this link.</p>
       </section>`;
   }
@@ -161,19 +167,25 @@ function priceCard() {
     <section class="card stack">
       <h2>Thanks${lead.firstName ? html`, ${lead.firstName}` : ""}. Your request is in.</h2>
       <p class="muted">${describeRequest(lead.selections)}</p>
-      <p class="notice notice-info">${company} is preparing your quote and will send it to this page. Keep this link.</p>
+      <p class="notice notice-info">${lead.selections.plan === "other" ? html`You asked for something specific, so there is no instant estimate. ` : ""}${company} is preparing your quote and will send it to this page. Keep this link.</p>
     </section>`;
 }
 
+const itemRow = (item) => html`<tr><td>${item.label}<div class="small muted num">${item.qty}${item.unit ? html` ${item.unit}` : ""} × ${money(item.unitPrice, true)}</div></td><td class="num">${money(item.qty * item.unitPrice, true)}</td></tr>`;
+
+/** Every line of the exact quote: what it is, how much of it, the rate and the amount. */
 function quoteTable(q) {
   return html`
     <table class="quote-table">
-      <thead><tr><th>Item</th><th>Amount</th></tr></thead>
-      <tbody>
-        ${q.items.map((item) => html`<tr><td>${item.label}<div class="small muted num">${item.qty}${item.unit ? html` ${item.unit}` : ""} × ${money(item.unitPrice, true)}</div></td><td class="num">${money(item.qty * item.unitPrice, true)}</td></tr>`)}
-      </tbody>
+      <thead><tr><th>What you are paying for</th><th>Amount</th></tr></thead>
+      <tbody>${q.items.map(itemRow)}</tbody>
       <tfoot><tr><td>Total</td><td class="num">${money(q.total, true)}</td></tr></tfoot>
     </table>`;
+}
+
+/** The same lines for an estimate, without a total: the price range above is the figure to go by. */
+function itemRows(items) {
+  return html`<table class="quote-table"><tbody>${items.map(itemRow)}</tbody></table>`;
 }
 
 /* ---------- render ---------- */

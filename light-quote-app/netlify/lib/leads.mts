@@ -167,6 +167,8 @@ function previewUrls(lead: Lead, withToken: boolean) {
 /** The homeowner's view: reached by the unguessable link, shows only their own request. */
 export function customerView(lead: Lead, installer: Installer) {
   const mode = installer.settings.priceMode;
+  // A custom request has no standard price, so nothing is shown until the installer quotes it.
+  const showEstimate = mode !== "hidden" && lead.estimate !== null && lead.selections.plan !== "other";
   return {
     installer: publicInstaller(installer),
     lead: {
@@ -176,7 +178,9 @@ export function customerView(lead: Lead, installer: Installer) {
       lat: lead.lat,
       lng: lead.lng,
       selections: lead.selections,
-      estimate: mode === "hidden" || !lead.estimate ? null : { low: lead.estimate.low, high: lead.estimate.high },
+      estimate: showEstimate ? { low: lead.estimate!.low, high: lead.estimate!.high } : null,
+      /** How the estimate is made up, so the customer sees what each part costs before the exact quote. */
+      breakdown: showEstimate ? suggestedItems(lead.selections, installer.settings) : [],
       photos: lead.photos.map((name) => fileUrl(lead, name, true)),
       previews: {
         status: lead.previews.status,
@@ -286,7 +290,7 @@ export async function createLead(installer: Installer, input: NewLead, origin: s
   // "Instant" mode: the estimate is the quote, so the homeowner can book straight away.
   let quote: Quote | null = null;
   let status = "new";
-  if (installer.settings.priceMode === "instant" && input.source === "quiz") {
+  if (installer.settings.priceMode === "instant" && input.source === "quiz" && input.selections.plan !== "other") {
     const items = suggestedItems(input.selections, installer.settings);
     const subtotal = items.reduce((sum, item) => sum + item.qty * item.unitPrice, 0);
     const minimum = installer.settings.pricing.minimumJob;

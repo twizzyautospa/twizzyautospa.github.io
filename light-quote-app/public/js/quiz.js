@@ -7,6 +7,8 @@ const state = {
   index: 0,
   selections: {
     service: "",
+    plan: "",
+    planNote: "",
     homeSize: "",
     stories: 1,
     scope: "front",
@@ -30,6 +32,10 @@ const ICONS = {
   roofline: `<svg viewBox="0 0 80 62" aria-hidden="true">${HOUSE}${bulbs([[16, 35], [22, 30], [28, 25], [34, 21], [40, 16], [46, 21], [52, 25], [58, 30], [64, 35]])}</svg>`,
   trees: `<svg viewBox="0 0 80 62" aria-hidden="true">${TREE(26)}<path d="M44 56c0-8 5-12 10-12s10 4 10 12z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>${bulbs([[22, 36], [30, 39], [26, 30], [23, 43], [50, 50], [57, 48], [60, 53], [47, 54]])}</svg>`,
   full: `<svg viewBox="0 0 96 62" aria-hidden="true">${HOUSE}${TREE(82)}${bulbs([[16, 35], [22, 30], [28, 25], [34, 21], [40, 16], [46, 21], [52, 25], [58, 30], [64, 35], [78, 36], [86, 39], [82, 30], [80, 43]])}</svg>`,
+  planFull: `<svg viewBox="0 0 80 62" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"><path d="M14 22h52v30H14zM14 22l8-10h36l8 10M40 12v40"/>${bulbs([[24, 34], [32, 40], [50, 34], [58, 40]])}</svg>`,
+  planBoth: `<svg viewBox="0 0 80 62" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"><path d="M22 54 30 10M46 54 38 10M25 40h18M27 28h14M29 17h10M56 22v24M50 40l6 7 6-7M68 46V22M62 28l6-7 6 7"/></svg>`,
+  planInstall: `<svg viewBox="0 0 80 62" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"><path d="M26 54 34 10M50 54 42 10M29 40h18M31 28h14M33 17h10M64 46V20M57 28l7-8 7 8"/></svg>`,
+  planOther: `<svg viewBox="0 0 80 62" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"><path d="M18 12h44v30H38l-10 9v-9H18z"/><path d="M28 23h24M28 31h15"/></svg>`,
   camera: `<svg viewBox="0 0 48 48" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><path d="M6 15h8l3-5h14l3 5h8v24H6z"/><circle cx="24" cy="26" r="8"/></svg>`,
 };
 const houseSize = (scale) =>
@@ -40,7 +46,7 @@ const wantsRoof = () => state.selections.service !== "trees";
 const wantsTrees = () => state.selections.service !== "roofline";
 
 function steps() {
-  return ["service", wantsRoof() && "home", wantsTrees() && "trees", "color", "address", "photo", "contact"].filter(Boolean);
+  return ["service", "plan", wantsRoof() && "home", wantsTrees() && "trees", "color", "address", "photo", "contact"].filter(Boolean);
 }
 
 const choice = (name, value, current, body) => html`
@@ -59,6 +65,19 @@ const RENDER = {
       ${choice("service", "trees", state.selections.service, html`${raw(ICONS.trees)}<span class="choice-text"><strong>Trees &amp; shrubs</strong><small>Wrapped trunks, branches and bushes</small></span>`)}
       ${choice("service", "full", state.selections.service, html`${raw(ICONS.full)}<span class="choice-text"><strong>Full house</strong><small>Roofline plus trees and shrubs</small></span>`)}
     </div>`,
+
+  plan: () => html`
+    ${head("What do you need from us?", "This decides what you pay for. First-time setups include the lights, which are yours to reuse next year.")}
+    <div class="choices choices-list" role="radiogroup" aria-label="What you need">
+      ${choice("plan", "full", state.selections.plan, html`${raw(ICONS.planFull)}<span class="choice-text"><strong>Lights, installation and takedown</strong><small>We supply the lights, put them up and take them down</small></span>`)}
+      ${choice("plan", "installTakedown", state.selections.plan, html`${raw(ICONS.planBoth)}<span class="choice-text"><strong>Installation and takedown</strong><small>You already have the lights</small></span>`)}
+      ${choice("plan", "install", state.selections.plan, html`${raw(ICONS.planInstall)}<span class="choice-text"><strong>Installation only</strong><small>You have the lights and take them down yourself</small></span>`)}
+      ${choice("plan", "other", state.selections.plan, html`${raw(ICONS.planOther)}<span class="choice-text"><strong>Something else</strong><small>Tell us exactly what you need</small></span>`)}
+    </div>
+    <label class="field" id="plan-note-field" style="margin-top:14px" ${raw(state.selections.plan === "other" ? "" : "hidden")}>
+      <span>What do you need?</span>
+      <textarea id="plan-note" maxlength="300" placeholder="For example: takedown only, or repairs to lights already up">${state.selections.planNote}</textarea>
+    </label>`,
 
   home: () => html`
     ${head("Tell us about your home", "A rough answer is fine. Your installer measures before giving a final price.")}
@@ -228,6 +247,11 @@ function setError(message) {
 function collect(key) {
   const s = state.selections;
   if (key === "service") return s.service ? "" : "Choose what you would like lit up.";
+  if (key === "plan") {
+    if (!s.plan) return "Choose what you need.";
+    s.planNote = s.plan === "other" ? $("#plan-note").value.trim() : "";
+    return s.plan === "other" && s.planNote.length < 3 ? "Tell us what you need." : "";
+  }
   if (key === "home") return s.homeSize ? "" : "Choose the size closest to your home.";
   if (key === "trees") {
     return s.trees.small + s.trees.medium + s.trees.large + s.shrubs > 0 ? "" : "Add at least one tree or shrub.";
@@ -263,6 +287,7 @@ $("#quiz").addEventListener("submit", async (event) => {
 $("#back").addEventListener("click", () => {
   const key = steps()[state.index];
   if (key === "address") state.address = $("#address").value.trim();
+  if (key === "plan") state.selections.planNote = $("#plan-note").value.trim();
   state.index = Math.max(0, state.index - 1);
   show();
 });
@@ -273,11 +298,19 @@ $("#step").addEventListener("change", (event) => {
     state.selections[input.name] = input.name === "stories" ? Number(input.value) : input.value;
     setError("");
     // Single-question steps move on by themselves.
-    if (input.name === "service" || input.name === "color") {
+    if (input.name === "service" || input.name === "color" || (input.name === "plan" && input.value !== "other")) {
       setTimeout(() => { state.index += 1; show(); }, 180);
+    }
+    if (input.name === "plan") {
+      $("#plan-note-field").hidden = input.value !== "other";
+      if (input.value === "other") $("#plan-note").focus();
     }
   }
   if (input.id === "photo-input") addPhotos([...input.files]);
+});
+
+$("#step").addEventListener("input", (event) => {
+  if (event.target.id === "plan-note") setError("");
 });
 
 $("#step").addEventListener("click", (event) => {

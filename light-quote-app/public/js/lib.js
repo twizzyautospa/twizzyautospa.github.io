@@ -95,6 +95,12 @@ export const SERVICE_LABELS = { roofline: "Roofline", trees: "Trees & shrubs", f
 export const SIZE_LABELS = { small: "Small", medium: "Medium", large: "Large", xl: "Extra large" };
 export const SCOPE_LABELS = { front: "Front only", frontSides: "Front and sides", full: "All the way around" };
 export const COLOR_LABELS = { warm: "Warm white", cool: "Bright white", multi: "Multicolour" };
+export const PLAN_LABELS = {
+  full: "Lights supplied, installed and taken down",
+  installTakedown: "Installation and takedown (own lights)",
+  install: "Installation only (own lights)",
+  other: "Something else",
+};
 export const STATUS_LABELS = {
   new: "New",
   quoted: "Quote sent",
@@ -166,5 +172,6 @@ export function describeRequest(s) {
     if (s.shrubs) parts.push(`${s.shrubs} shrub${s.shrubs === 1 ? "" : "s"}`);
   }
   parts.push(COLOR_LABELS[s.color]);
+  if (s.plan) parts.push(s.plan === "other" && s.planNote ? `Asked for: ${s.planNote}` : PLAN_LABELS[s.plan]);
   return parts.filter(Boolean).join(" · ");
 }

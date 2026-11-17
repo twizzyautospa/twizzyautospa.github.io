@@ -5,12 +5,21 @@ export const HOME_SIZES = ["small", "medium", "large", "xl"] as const;
 export const SCOPES = ["front", "frontSides", "full"] as const;
 export const COLORS = ["warm", "cool", "multi"] as const;
 export const PRICE_MODES = ["range", "instant", "hidden"] as const;
+/**
+ * What the customer needs done. First-time customers buy the lights as well; returning ones, or people who
+ * already own lights, only pay for the labour.
+ */
+export const PLANS = ["full", "installTakedown", "install", "other"] as const;
 
 export type Service = (typeof SERVICES)[number];
 export type Color = (typeof COLORS)[number];
+export type Plan = (typeof PLANS)[number];
 
 export interface Selections {
   service: Service;
+  plan: Plan;
+  /** The customer's own words when the plan is "other". */
+  planNote: string;
   homeSize: (typeof HOME_SIZES)[number];
   stories: 1 | 2 | 3;
   scope: (typeof SCOPES)[number];
@@ -24,14 +33,21 @@ export interface InstallerSettings {
   brand: { color: string; logo: string; tagline: string };
   priceMode: (typeof PRICE_MODES)[number];
   pricing: {
-    rooflinePerFt: number;
+    /** Per foot of roofline: the lights themselves, bought once. */
+    lightsPerFt: number;
+    /** Per foot of roofline: putting them up. Multiplied by the storey multiplier. */
+    installPerFt: number;
+    /** Per foot of roofline: taking them down after the season. Multiplied by the storey multiplier. */
+    takedownPerFt: number;
     minimumJob: number;
     rangePct: number;
     /** Typical front-facing roofline, in feet, by home size. */
     sizes: { small: number; medium: number; large: number; xl: number };
     /** Multiplier on front roofline feet for how much of the house is lit. */
     scope: { front: number; frontSides: number; full: number };
+    /** Applied to installation and takedown, not to the lights. */
     storyMultiplier: { 1: number; 2: number; 3: number };
+    /** Tree and shrub prices are for lights supplied, installed and taken down. */
     treeSmall: number;
     treeMedium: number;
     treeLarge: number;
@@ -47,7 +63,9 @@ export const DEFAULT_SETTINGS: InstallerSettings = {
   brand: { color: "#b3202a", logo: "", tagline: "See your home lit up, and get a price, in two minutes." },
   priceMode: "range",
   pricing: {
-    rooflinePerFt: 6,
+    lightsPerFt: 3,
+    installPerFt: 6,
+    takedownPerFt: 1.5,
     minimumJob: 350,
     rangePct: 15,
     sizes: { small: 70, medium: 110, large: 160, xl: 220 },
@@ -109,7 +127,9 @@ export function normalizeSettings(input: any, base: InstallerSettings = DEFAULT_
     },
     priceMode: oneOf(src.priceMode, PRICE_MODES, base.priceMode),
     pricing: {
-      rooflinePerFt: num(p.rooflinePerFt, 0, 100, b.rooflinePerFt),
+      lightsPerFt: num(p.lightsPerFt, 0, 100, b.lightsPerFt),
+      installPerFt: num(p.installPerFt, 0, 100, b.installPerFt),
+      takedownPerFt: num(p.takedownPerFt, 0, 100, b.takedownPerFt),
       minimumJob: num(p.minimumJob, 0, 100_000, b.minimumJob),
       rangePct: num(p.rangePct, 0, 50, b.rangePct),
       sizes: {
@@ -143,8 +163,11 @@ export function normalizeSettings(input: any, base: InstallerSettings = DEFAULT_
 export function normalizeSelections(input: any): Selections {
   const src = input && typeof input === "object" ? input : {};
   const trees = src.trees ?? {};
+  const plan = oneOf(src.plan, PLANS, "full");
   return {
     service: oneOf(src.service, SERVICES, "roofline"),
+    plan,
+    planNote: plan === "other" ? str(src.planNote, 300) : "",
     homeSize: oneOf(src.homeSize, HOME_SIZES, "medium"),
     stories: int(src.stories, 1, 3, 1) as 1 | 2 | 3,
     scope: oneOf(src.scope, SCOPES, "front"),
@@ -175,25 +198,57 @@ export function estimateFeet(s: Selections, settings: InstallerSettings): number
   return Math.round(settings.pricing.sizes[s.homeSize] * settings.pricing.scope[s.scope]);
 }
 
-/** Line items the installer starts from. `feet` overrides the quiz estimate once the roofline is measured. */
+type Part = "lights" | "install" | "takedown";
+
+/** Which parts of the job each plan pays for. A custom request starts from the full job for the installer to edit. */
+const PLAN_PARTS: Record<Plan, Part[]> = {
+  full: ["lights", "install", "takedown"],
+  installTakedown: ["install", "takedown"],
+  install: ["install"],
+  other: ["lights", "install", "takedown"],
+};
+
+const TREE_SUFFIX: Record<Plan, string> = {
+  full: "lights included",
+  installTakedown: "your lights",
+  install: "your lights, install only",
+  other: "lights included",
+};
+
+/**
+ * Line items the installer starts from, one line for each thing the customer pays for.
+ * `feet` overrides the quiz estimate once the roofline is measured.
+ */
 export function suggestedItems(s: Selections, settings: InstallerSettings, feet?: number): QuoteItem[] {
   const p = settings.pricing;
+  const parts = PLAN_PARTS[s.plan] ?? PLAN_PARTS.full;
   const items: QuoteItem[] = [];
   if (wantsRoofline(s)) {
     const length = feet && feet > 0 ? Math.round(feet) : estimateFeet(s, settings);
     const storyNote = s.stories > 1 ? `, ${s.stories}-storey` : "";
-    items.push({
-      label: `Roofline lighting${storyNote}`,
-      qty: length,
-      unit: "ft",
-      unitPrice: money(p.rooflinePerFt * p.storyMultiplier[s.stories]),
-    });
+    const labour = p.storyMultiplier[s.stories];
+    const lines: Record<Part, { label: string; unitPrice: number }> = {
+      lights: { label: "Roofline lights, supplied", unitPrice: money(p.lightsPerFt) },
+      install: { label: `Roofline installation${storyNote}`, unitPrice: money(p.installPerFt * labour) },
+      takedown: { label: `Roofline takedown${storyNote}`, unitPrice: money(p.takedownPerFt * labour) },
+    };
+    for (const part of parts) {
+      if (lines[part].unitPrice > 0) items.push({ label: lines[part].label, qty: length, unit: "ft", unitPrice: lines[part].unitPrice });
+    }
   }
   if (wantsTrees(s)) {
-    if (s.trees.small) items.push({ label: "Small tree wrap", qty: s.trees.small, unit: "each", unitPrice: p.treeSmall });
-    if (s.trees.medium) items.push({ label: "Medium tree wrap", qty: s.trees.medium, unit: "each", unitPrice: p.treeMedium });
-    if (s.trees.large) items.push({ label: "Large tree wrap", qty: s.trees.large, unit: "each", unitPrice: p.treeLarge });
-    if (s.shrubs) items.push({ label: "Shrub lighting", qty: s.shrubs, unit: "each", unitPrice: p.shrub });
+    // Tree and shrub prices cover all three parts. When the customer needs fewer, they pay the same share of the
+    // price as those parts make up of the per-foot roofline rate, to the nearest dollar.
+    const rate: Record<Part, number> = { lights: p.lightsPerFt, install: p.installPerFt, takedown: p.takedownPerFt };
+    const whole = rate.lights + rate.install + rate.takedown;
+    const portion = whole > 0 ? parts.reduce((sum, part) => sum + rate[part], 0) / whole : 1;
+    const line = (label: string, qty: number, price: number) => {
+      if (qty) items.push({ label: `${label}, ${TREE_SUFFIX[s.plan] ?? TREE_SUFFIX.full}`, qty, unit: "each", unitPrice: portion === 1 ? price : Math.round(price * portion) });
+    };
+    line("Small tree wrap", s.trees.small, p.treeSmall);
+    line("Medium tree wrap", s.trees.medium, p.treeMedium);
+    line("Large tree wrap", s.trees.large, p.treeLarge);
+    line("Shrub lighting", s.shrubs, p.shrub);
   }
   return items;
 }

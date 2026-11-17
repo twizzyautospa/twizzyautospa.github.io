@@ -23,7 +23,9 @@
     // The pictures are real output: one daytime photo run through Lumiquote's preview engine for each option.
     var IMAGES = "/img/house/";
     // Example numbers only. Each installer sets their own rates inside the product.
-    var PER_FOOT = 6;
+    // Per foot: the lights, putting them up, taking them down. Each is its own line on the quote.
+    var PARTS = [["Lights supplied", 3], ["Installation", 6], ["Takedown", 1.5]];
+    var PER_FOOT = PARTS.reduce(function (sum, part) { return sum + part[1]; }, 0);
     var ESTIMATE_FEET = 110;
     var MEASURED_FEET = 118;
     var TREES_EXAMPLE = 360;
@@ -55,7 +57,11 @@
     };
     var quote = function () {
       var lines = [];
-      if (state.service !== "trees") lines.push({ label: "Roofline lighting", detail: MEASURED_FEET + " ft × " + money(PER_FOOT), amount: MEASURED_FEET * PER_FOOT });
+      if (state.service !== "trees") {
+        PARTS.forEach(function (part) {
+          lines.push({ label: part[0], detail: MEASURED_FEET + " ft × $" + part[1].toFixed(2), amount: MEASURED_FEET * part[1] });
+        });
+      }
       if (state.service !== "roofline") lines.push({ label: "Tree and shrubs", detail: "1 tree, 5 shrubs", amount: TREES_EXAMPLE });
       return { lines: lines, total: lines.reduce(function (sum, l) { return sum + l.amount; }, 0) };
     };

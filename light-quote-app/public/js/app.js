@@ -1,5 +1,5 @@
 import {
-  $, $$, api, busy, COLOR_LABELS, copyText, dateOnly, dateTime, describeRequest, html, money, raw, SCOPE_LABELS,
+  $, $$, api, busy, COLOR_LABELS, copyText, dateOnly, dateTime, describeRequest, html, money, PLAN_LABELS, raw, SCOPE_LABELS,
   SERVICE_LABELS, setHtml, SIZE_LABELS, STATUS_LABELS, TILES, timeAgo, toast,
 } from "./lib.js";
 
@@ -180,6 +180,7 @@ function renderLead() {
           ${lead.source === "crm" ? html`<p class="notice notice-info">This job was booked in your LeadThru portal, so there are no quiz answers. The appointment date is on the portal calendar.</p>` : ""}
           <dl class="kv" ${raw(lead.source === "crm" ? "hidden" : "")}>
             <dt>Light up</dt><dd><strong>${SERVICE_LABELS[s.service]}</strong></dd>
+            <dt>Needs</dt><dd><strong>${PLAN_LABELS[s.plan] || PLAN_LABELS.full}</strong>${s.plan === "other" && s.planNote ? html`<div style="white-space:pre-line">${s.planNote}</div>` : ""}</dd>
             ${s.service !== "trees" ? html`
               <dt>Home</dt><dd>${SIZE_LABELS[s.homeSize]}, ${s.stories}-storey</dd>
               <dt>Roofline</dt><dd>${SCOPE_LABELS[s.scope]}</dd>` : ""}
@@ -429,9 +430,10 @@ page.addEventListener("click", async (event) => {
     return busy(target, async () => {
       ({ lead } = await api(`installer/leads/${lead.id}`, { method: "PATCH", body: { measurement: { lines: measure.lines } } }));
       const feet = lead.measurement?.feet || 0;
-      const roofItem = draft.items.find((item) => item.unit === "ft");
-      if (feet && roofItem) roofItem.qty = feet;
-      else if (feet) draft.items.unshift({ ...(lead.suggestedItems.find((i) => i.unit === "ft") || { label: "Roofline lighting", unit: "ft", unitPrice: account.settings.pricing.rooflinePerFt }), qty: feet });
+      // Every per-foot line (lights, installation, takedown) follows the measured length.
+      const roofItems = draft.items.filter((item) => item.unit === "ft");
+      if (feet && roofItems.length) roofItems.forEach((item) => { item.qty = feet; });
+      else if (feet) draft.items.unshift(...lead.suggestedItems.filter((item) => item.unit === "ft").map((item) => ({ ...item, qty: feet })));
       renderQuote();
       toast(feet ? `Saved ${feet} ft and updated the quote` : "Measurement cleared");
     });
@@ -557,10 +559,16 @@ function showSettings() {
       </section>
 
       <section class="card stack">
-        <div class="section-title" style="margin:0">Roofline pricing</div>
+        <div class="section-title" style="margin:0">Roofline pricing, per foot</div>
+        <p class="hint">Each part is its own line on the quote. First-time customers pay for all three; customers with their own lights pay for installation and takedown, or installation only.</p>
         <div class="form-grid">
-          ${number("s-perft", "Price per foot $", p.rooflinePerFt)}
-          ${number("s-story2", "2-storey multiplier", p.storyMultiplier[2])}
+          ${number("s-lights", "Lights $", p.lightsPerFt, "any", "Bought once by the customer.")}
+          ${number("s-install", "Installation $", p.installPerFt)}
+          ${number("s-takedown", "Takedown $", p.takedownPerFt)}
+        </div>
+        <p class="hint" id="perft-total"></p>
+        <div class="form-grid">
+          ${number("s-story2", "2-storey multiplier", p.storyMultiplier[2], "any", "On installation and takedown, not the lights.")}
           ${number("s-story3", "3-storey multiplier", p.storyMultiplier[3])}
         </div>
         <p class="hint">Before you measure, the estimate uses a typical front roofline length for each home size:</p>
@@ -584,6 +592,7 @@ function showSettings() {
           ${number("s-tree-l", "Large tree $", p.treeLarge)}
           ${number("s-shrub", "Shrub $", p.shrub)}
         </div>
+        <p class="hint">These prices are for lights supplied, installed and taken down. Customers who have their own lights, or skip takedown, pay the same share of them as your per-foot rates above.</p>
       </section>
 
       <section class="card stack">
@@ -617,6 +626,7 @@ function showSettings() {
       </section>
     </div>`);
   pendingLogo = undefined;
+  showPerFootTotal();
 }
 
 let pendingLogo; // undefined = unchanged, "" = removed, data URL = new logo
@@ -644,6 +654,19 @@ page.addEventListener("change", async (event) => {
   } catch (error) {
     toast(error.message || "Could not read that image", "error");
   }
+});
+
+/** Show what the three per-foot rates add up to, so an installer can see their all-in price as they type. */
+function showPerFootTotal() {
+  const box = $("#perft-total");
+  if (!box) return;
+  const n = (id) => Number($(`#${id}`).value) || 0;
+  const all = (labour) => n("s-lights") + (n("s-install") + n("s-takedown")) * labour;
+  box.textContent = `All three together: ${money(all(1), true)} per foot on one storey, ${money(all(n("s-story2")), true)} on two.`;
+}
+
+page.addEventListener("input", (event) => {
+  if (["s-lights", "s-install", "s-takedown", "s-story2"].includes(event.target.id)) showPerFootTotal();
 });
 
 page.addEventListener("click", async (event) => {
@@ -688,7 +711,9 @@ page.addEventListener("click", async (event) => {
             notifyEmail: value("s-notify"),
             webhookUrl: value("s-webhook"),
             pricing: {
-              rooflinePerFt: numberOf("s-perft"),
+              lightsPerFt: numberOf("s-lights"),
+              installPerFt: numberOf("s-install"),
+              takedownPerFt: numberOf("s-takedown"),
               minimumJob: numberOf("s-min"),
               rangePct: numberOf("s-range"),
               sizes: { small: numberOf("s-small"), medium: numberOf("s-medium"), large: numberOf("s-large"), xl: numberOf("s-xl") },

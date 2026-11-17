@@ -703,7 +703,7 @@ async function inboundRoutes(ctx: Ctx): Promise<Response> {
       address,
       lat: lat !== null && lng !== null ? lat : null,
       lng: lat !== null && lng !== null ? lng : null,
-      selections: normalizeSelections(body.selections ?? { service: body.service }),
+      selections: normalizeSelections(body.selections ?? { service: body.service, plan: body.plan, planNote: body.planNote }),
       photos: [],
       bookingDate: body.bookingDate,
       notes,

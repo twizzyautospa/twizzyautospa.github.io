@@ -153,6 +153,12 @@ input[type="color"] { width: 54px; height: 44px; padding: 3px; border: 1px solid
 }
 h1[tabindex="-1"]:focus { outline: none; }
 .choices-compact { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+/* Longer answers read better as rows on every screen: icon on the left, title above its description. */
+.choices-list { grid-template-columns: 1fr; }
+.choices-list .choice { flex-direction: row; text-align: left; gap: 14px; padding: 14px 16px; }
+.choices-list .choice svg { flex: 0 0 64px; }
+.choices-list .choice .choice-text { display: flex; flex-direction: column; gap: 2px; }
+@media (min-width: 760px) { .choices-list { grid-template-columns: 1fr 1fr; } }
 .bulb { fill: #ffd27a; stroke: none; }
 .bulbs { display: flex; gap: 7px; justify-content: center; padding: 6px 0; }
 .bulbs i { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 10px 2px currentColor; background: currentColor; }
