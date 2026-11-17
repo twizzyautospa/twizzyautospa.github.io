@@ -67,16 +67,19 @@ function stageFor(status: string, config: CrmConfig): string | undefined {
 const QUOTE_FIELDS = { link: "Lumiquote quote link", total: "Lumiquote quote total", company: "Lumiquote company" } as const;
 type QuoteFieldIds = Record<keyof typeof QUOTE_FIELDS, string>;
 
-async function quoteFieldIds(): Promise<QuoteFieldIds> {
+/** Ids of the fields, by name. A field that is missing and cannot be created is left out, and looked for again next time. */
+async function quoteFieldIds(): Promise<Partial<QuoteFieldIds>> {
   const saved = await getSetting<QuoteFieldIds>("crmQuoteFields");
   if (saved?.link && saved.total && saved.company) return saved;
   const existing = await listContactFields();
-  const ids = {} as QuoteFieldIds;
+  const ids: Partial<QuoteFieldIds> = {};
   for (const key of Object.keys(QUOTE_FIELDS) as (keyof typeof QUOTE_FIELDS)[]) {
     const name = QUOTE_FIELDS[key];
-    ids[key] = existing.find((field) => field.name.toLowerCase() === name.toLowerCase())?.id ?? (await createContactField(name));
+    const found = existing.find((field) => field.name.toLowerCase() === name.toLowerCase())?.id;
+    // The CRM token may not be allowed to add fields. They can be added by hand under the same names.
+    ids[key] = found ?? (await createContactField(name).catch(() => undefined));
   }
-  await setSetting("crmQuoteFields", ids);
+  if (ids.link && ids.total && ids.company) await setSetting("crmQuoteFields", ids);
   return ids;
 }
 
@@ -84,11 +87,12 @@ async function quoteFieldIds(): Promise<QuoteFieldIds> {
 async function saveQuoteFields(contactId: string, installer: Installer, lead: Lead, origin: string): Promise<void> {
   if (!lead.quote) return;
   const ids = await quoteFieldIds();
-  await setContactFields(contactId, [
+  const fields = [
     { id: ids.link, value: `${origin}/r/${lead.publicToken}` },
     { id: ids.total, value: usd(lead.quote.total) },
     { id: ids.company, value: installer.companyName },
-  ]);
+  ].filter((field): field is { id: string; value: string } => Boolean(field.id));
+  await setContactFields(contactId, fields);
 }
 
 export type CrmEvent = "lead.created" | "quote.sent" | "quote.accepted" | "quote.declined" | "status.changed";
