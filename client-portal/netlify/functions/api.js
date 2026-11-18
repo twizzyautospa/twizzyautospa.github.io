@@ -1048,7 +1048,7 @@ async function deleteDoc(store, pid, kind, id) {
 /* ---- quote → lead stage / invoice ---- */
 
 const closedStageOf = (p) => p && p.stages.find((s) => /\b(closed|won)\b/i.test(s.name) && !/lost/i.test(s.name));
-const quotedStageOf = (p) => p && p.stages.find((s) => /quot/i.test(s.name));
+const quotedStageOf = (p) => p && p.stages.find((s) => /quot|pitch|proposal/i.test(s.name));
 
 // Move a lead forward to `target` (never backwards, e.g. out of Closed or Job Completed).
 async function moveLeadForward(pid, oppId, target, extraPatch = {}) {

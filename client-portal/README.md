@@ -53,7 +53,7 @@ branding and PDF as invoices, plus a *Valid until* date (default `quoteDays`, 30
 - *Text it / Email it / Share / Copy link* sends a link to **/q?t=…**, a branded customer page (no login; the link is
   HMAC-signed) showing the quote with **Approve** (type full name + tick "I accept") and **Decline** (optional reason).
   The first time the customer opens it, the quote shows as *Viewed* in the portal.
-- Sending a quote moves the lead forward to the **Quoted** stage.
+- Sending a quote moves the lead forward to the **Quoted** stage (any stage named Quote… / Pitch… / Proposal…, e.g. "Pitch Sent").
 - **On approval** (by the customer, or *Mark as approved* in the portal): the lead moves forward to **Closed** with
   the pre-tax quote total as its job value, the contact is tagged `quote approved` with a note, and a matching
   **invoice is created as a draft**. Home shows "<customer> approved quote … Schedule the job" until it is booked.
