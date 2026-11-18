@@ -45,6 +45,7 @@
   <symbol id="i-cal" viewBox="0 0 24 24"><path d="M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1ZM4 10h16M8 3v4M16 3v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
   <symbol id="i-next" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20h16M7 16v-5M12 16V6M17 16v-8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4M6 11H5v9h14v-9h-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 </svg>
 
@@ -92,6 +93,7 @@
     <button type="button" data-view="leads"><svg><use href="#i-list"/></svg><span>Leads</span></button>
     <button type="button" data-view="calendar"><svg><use href="#i-cal"/></svg><span>Calendar</span> <span class="tab-c" id="calCount" hidden></span></button>
     <button type="button" data-view="invoices"><svg><use href="#i-doc"/></svg><span>Billing</span> <span class="tab-c" id="invCount" hidden></span></button>
+    <button type="button" data-view="services" id="svcTab" hidden><svg><use href="#i-chart"/></svg><span>Services</span></button>
   </nav>
 
   <section class="home-view" id="homeView"></section>
@@ -107,6 +109,7 @@
   </div>
 
   <div class="tools">
+    <button class="btn sm add-lead" id="addLeadBtn" type="button" hidden><svg><use href="#i-plus"/></svg>Add lead</button>
     <label class="search"><svg><use href="#i-search"/></svg>
       <input id="search" type="search" placeholder="Search name or phone" autocomplete="off" autocapitalize="none">
     </label>
@@ -122,6 +125,8 @@
   <section class="cal-view" id="calView" hidden></section>
 
   <section class="inv-view" id="invView" hidden></section>
+
+  <section class="svc-view" id="svcView" hidden></section>
 
   <section class="clients-view" id="clientsView" hidden></section>
 
@@ -163,6 +168,14 @@
   <div class="grab" aria-hidden="true"></div>
   <button class="icon-btn close" id="invClose" type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
   <div class="sheet-body" id="invBody"></div>
+</aside>
+
+<!-- ADMIN PANEL (add lead, services) -->
+<div class="scrim adm-scrim" id="admScrim" hidden></div>
+<aside class="sheet adm-panel" id="admPanel" role="dialog" aria-modal="true" hidden>
+  <div class="grab" aria-hidden="true"></div>
+  <button class="icon-btn close" id="admClose" type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+  <div class="sheet-body" id="admBody"></div>
 </aside>
 
 <div class="toast" id="toast" role="status" hidden></div>

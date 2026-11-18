@@ -108,6 +108,26 @@ Every login has a **Leads | Calendar** switch. The calendar is the portal's own 
   A GHL "Custom Date Reminder" workflow on Next Job Date sends the day-of confirmation.
 - Setup prompts for Claude in Chrome (stage, fields, workflows): `docs/ghl-automation-prompts.md`.
 
+## Your own pipeline and services (admin only)
+
+LeadThru's own clients and prospects live in a GHL pipeline named **LeadThru Sales**
+(New Prospect › Pitch Sent › In Progress › Active Client › Inactive Client). Pick it from the pipeline
+dropdown to work it like any client's board: notes, calls, bookings, quotes and invoices.
+
+- **Add lead** (admin, Leads tab): name, optional contact person, phone, email, stage and value. Creates the
+  GHL contact (upserted by phone/email) and the lead in the selected pipeline.
+- Sending a quote moves the prospect to **Pitch Sent**; an approved quote moves them to **Active Client**
+  and drafts the invoice.
+- **Services tab** (admin only): log what each client buys.
+  - *Monthly retainer* (e.g. Meta ads retainer, CRM portal): counts its amount every month from the start
+    date until the end date, or ongoing if blank.
+  - *One-off job* (e.g. video package, website, ad creatives): counts once, in the month of its date, with a
+    status (Planned / In progress / Delivered) and Paid.
+  - Shows monthly recurring revenue, this month, this year, unpaid jobs, a 12-month stacked chart by service
+    (with a table view), revenue by service, open and delivered jobs, and every client's monthly and
+    all-time totals. Tap a client to add or change their services.
+  - Clients are the leads in LeadThru Sales. Stored in Netlify Blobs at `svc/agency/<id>/<version>`.
+
 ## Managing clients (no code, no redeploy)
 
 Log in as the admin (`leadthru`) and tap the **people icon** in the top bar to open **Clients**:

@@ -41,6 +41,23 @@ PEOPLE.forEach(([name, stage, hoursAgo, value], i) => {
     attributions: REFERRALS.has(name) ? [] : [{ medium: 'Paid Social', utmSource: 'facebook', isFirst: true }],
   });
 });
+// The agency's own pipeline (admin only): fictional client businesses.
+const AGENCY = 'demo-agency';
+const AGENCY_STAGES = ['New Prospect', 'Pitch Sent', 'In Progress', 'Active Client', 'Inactive Client']
+  .map((name, i) => ({ id: `agency-stage-${i + 1}`, name, position: i }));
+[['Northshore Landscaping', 'Active Client', 2400], ['Summit Roofing Co', 'Active Client', 1900], ['Maple Leaf Plumbing', 'Active Client', 1500],
+  ['Brightline HVAC', 'Active Client', 1500], ['Clearview Windows', 'Inactive Client', 0], ['Harbour Paving', 'Pitch Sent', 0],
+  ['Oakridge Decks', 'New Prospect', 0]].forEach(([name, stage, value], i) => {
+  const cid = `demo-biz-${i + 1}`;
+  contacts.set(cid, { id: cid, name, firstName: name, phone: `+1905555${String(2100 + i * 13).padStart(4, '0')}`, email: '', tags: ['leadthru client'], customFields: [] });
+  const created = new Date(now - (400 - i * 40) * 864e5 / 10).toISOString();
+  opps.set(`demo-biz-opp-${i + 1}`, {
+    id: `demo-biz-opp-${i + 1}`, name, pipelineId: AGENCY, pipelineStageId: AGENCY_STAGES.find((x) => x.name === stage).id,
+    status: 'open', monetaryValue: value, source: 'Referral', contactId: cid, locationId: process.env.GHL_LOCATION_ID || 'demo-location',
+    createdAt: created, updatedAt: created, lastStageChangeAt: created, lastStatusChangeAt: created, attributions: [],
+  });
+});
+
 notes.set('demo-contact-7', [{ id: 'n1', body: 'Called, wants a quote for backyard patio + lighting. Prefers weekday mornings.', dateAdded: new Date(now - 20 * 3600e3).toISOString() }]);
 
 const FIELDS = ['Next Job Date', 'Next Job Time', 'Next Job Type', 'Next Job Address', 'Next Job Business']
@@ -53,7 +70,7 @@ function route(method, path, body) {
   const p = url.pathname;
   let m;
   if (method === 'GET' && p === '/opportunities/pipelines') {
-    return [200, { pipelines: [{ id: PIPE, name: 'Northshore Landscaping', stages: STAGES }] }];
+    return [200, { pipelines: [{ id: PIPE, name: 'Northshore Landscaping', stages: STAGES }, { id: AGENCY, name: 'LeadThru Sales', stages: AGENCY_STAGES }] }];
   }
   if (method === 'GET' && p === '/opportunities/search') {
     const list = [...opps.values()].filter((o) => o.pipelineId === url.searchParams.get('pipeline_id')).map(oppOut);
@@ -86,10 +103,17 @@ function route(method, path, body) {
   }
   if (method === 'GET' && /^\/locations\/[^/]+\/customFields$/.test(p)) return [200, { customFields: FIELDS }];
   if ((m = p.match(/^\/contacts\/([^/]+)$/)) && method === 'PUT') return [200, { contact: contacts.get(m[1]) || {} }];
-  if (method === 'POST' && p === '/contacts/upsert') {
+  if (method === 'POST' && (p === '/contacts/upsert' || p === '/contacts/')) {
     const id = `demo-contact-x${Date.now()}`;
-    contacts.set(id, { id, name: body.name, phone: body.phone, email: body.email, tags: [] });
-    return [200, { contact: { id } }];
+    const name = body.name || [body.firstName, body.lastName].filter(Boolean).join(' ');
+    contacts.set(id, { id, name, phone: body.phone || '', email: body.email || '', tags: [], companyName: body.companyName || '' });
+    return [p.endsWith('upsert') ? 200 : 201, { contact: contacts.get(id) }];
+  }
+  if (method === 'POST' && p === '/opportunities/') {
+    const id = `demo-opp-x${Date.now()}`;
+    const at = new Date().toISOString();
+    opps.set(id, { id, ...body, monetaryValue: body.monetaryValue || 0, source: 'LeadThru portal', createdAt: at, updatedAt: at, lastStageChangeAt: at, attributions: [] });
+    return [201, { opportunity: oppOut(opps.get(id)) }];
   }
   if (method === 'POST' && p === '/conversations/messages') return [200, { messageId: `msg-${Date.now()}` }];
   return [404, { message: `mock: no route for ${method} ${p}` }];

@@ -23,6 +23,9 @@
  *   POST /api/remove   {id, reason}         delete a lead from the pipeline (contact kept, tagged "removed by client")
  *   POST /api/meta     {id, meta:'yes'|'no'}  mark whether a lead came from Meta (GHL tags "meta lead" / "not meta lead")
  *   GET  /api/ics?t=<signed token>        one appointment as an .ics file (add to phone calendar)
+ *   POST /api/lead     {pipeline, name, contactName?, phone?, email?, stageId?, value?}   (admin) add a lead / prospect
+ *   GET  /api/services                    (admin) LeadThru's own clients (LeadThru Sales pipeline) + services sold
+ *   POST /api/services {action:'save'|'delete', service|id}   (admin) add / change / remove a retainer or job
  *   GET  /api/health
  *
  * Environment variables (set on the Netlify site, never in code):
@@ -1047,7 +1050,7 @@ async function deleteDoc(store, pid, kind, id) {
 
 /* ---- quote → lead stage / invoice ---- */
 
-const closedStageOf = (p) => p && p.stages.find((s) => /\b(closed|won)\b/i.test(s.name) && !/lost/i.test(s.name));
+const closedStageOf = (p) => p && p.stages.find((s) => /\b(closed|won|active client)\b/i.test(s.name) && !/lost|inactive/i.test(s.name));
 const quotedStageOf = (p) => p && p.stages.find((s) => /quot|pitch|proposal/i.test(s.name));
 
 // Move a lead forward to `target` (never backwards, e.g. out of Closed or Job Completed).
@@ -1441,6 +1444,103 @@ async function sendDoc(store, user, pid, body, origin, kind) {
 
 /* ---------------- HTTP plumbing ---------------- */
 
+/* ---- admin: add a lead / prospect by hand ---- */
+
+async function addLead(user, body) {
+  const list = await allowedPipelines(user);
+  const p = list.find((x) => x.id === body.pipeline);
+  if (!p) throw new HttpError(404, 'Pick a pipeline.');
+  const name = clip(body.name, 80);
+  if (!name) throw new HttpError(400, 'Add a name.');
+  const person = clip(body.contactName, 80);
+  const phone = clip(body.phone, 40).replace(/[^\d+]/g, '');
+  const email = clip(body.email, 120).toLowerCase();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'That email does not look right.');
+  const stage = p.stages.find((x) => x.id === body.stageId) || p.stages[0];
+  if (!stage) throw new HttpError(400, 'This pipeline has no stages.');
+  const value = Number(body.value) || 0;
+  if (value < 0 || value > 1e8) throw new HttpError(400, 'Enter a dollar amount.');
+
+  const who = person || name;
+  const [firstName, ...rest] = who.split(/\s+/);
+  const contactBody = {
+    locationId: loc(), firstName, lastName: rest.join(' ') || undefined,
+    companyName: person ? name : undefined, phone: phone || undefined, email: email || undefined, source: 'LeadThru portal',
+  };
+  const c = phone || email ? await ghl('POST', '/contacts/upsert', contactBody) : await ghl('POST', '/contacts/', contactBody);
+  const contact = c.contact || c;
+  if (!contact || !contact.id) throw new HttpError(502, 'Could not create the contact.');
+  const r = await ghl('POST', '/opportunities/', {
+    locationId: loc(), pipelineId: p.id, pipelineStageId: stage.id, name, status: 'open', contactId: contact.id,
+    ...(value ? { monetaryValue: Math.round(value * 100) / 100 } : {}),
+  });
+  const o = r.opportunity || r;
+  return slim({
+    ...o, pipelineStageId: o.pipelineStageId || stage.id, createdAt: o.createdAt || new Date().toISOString(),
+    contact: { id: contact.id, name: who, phone: contact.phone || phone, email: contact.email || email, companyName: person ? name : '' },
+  });
+}
+
+/* ---- admin: LeadThru's own services (retainers and one-off jobs) ---- */
+// One versioned doc per service at svc/agency/<id>/<version>. Clients are the leads in the
+// "LeadThru Sales" pipeline. Monthly services earn their amount every month from start to end
+// (or ongoing); one-off jobs earn once, in the month of their date.
+
+const SVC_BILLING = ['monthly', 'once'];
+const SVC_STATUS = ['planned', 'in progress', 'delivered'];
+const svcBase = (id) => `svc/agency/${id}`;
+const agencyPipelineOf = (list) => list.find((p) => /leadthru sales/i.test(p.name)) || null;
+
+async function listServices(store) {
+  const all = await vlatestAll(store, 'svc/agency/');
+  return [...all.values()].map((r) => r.doc).filter((d) => d && !d.deleted)
+    .sort((a, b) => String(b.start).localeCompare(String(a.start)) || String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
+async function saveService(store, user, v) {
+  const isNew = !v.id;
+  if (!isNew && !DOC_ID_RE.test(String(v.id))) throw new HttpError(400, 'Unknown service.');
+  const id = isNew ? crypto.randomBytes(6).toString('hex') : v.id;
+  const prevRec = isNew ? null : await vlatest(store, svcBase(id));
+  const prev = prevRec ? prevRec.doc : null;
+  if (!isNew && (!prev || prev.deleted)) throw new HttpError(404, 'That service no longer exists.');
+  const service = clip(v.service, 60);
+  if (!service) throw new HttpError(400, 'Name the service, e.g. Meta ads retainer.');
+  const billing = SVC_BILLING.includes(v.billing) ? v.billing : 'once';
+  const amount = money2(v.amount);
+  if (!(amount > 0) || amount > 1e7) throw new HttpError(400, 'Enter the price.');
+  const start = ymdOk(v.start) ? v.start : todayYmd();
+  const end = billing === 'monthly' && ymdOk(v.end) ? v.end : '';
+  if (end && end < start) throw new HttpError(400, 'The end date is before the start date.');
+  let oppId = null;
+  let client = clip(v.client, 80);
+  if (v.oppId) {
+    const o = await loadOpportunity(user, v.oppId);
+    oppId = o.id;
+    client = slim(o).name || client;
+  }
+  if (!client) throw new HttpError(400, 'Pick the client.');
+  const now = new Date().toISOString();
+  const doc = {
+    id, oppId, client, service, billing, amount, start, end,
+    status: billing === 'once' ? (SVC_STATUS.includes(v.status) ? v.status : 'planned') : '',
+    paid: billing === 'once' ? !!v.paid : false,
+    notes: clip(v.notes, 500),
+    createdBy: (prev && prev.createdBy) || user.u,
+    createdAt: (prev && prev.createdAt) || now,
+    updatedAt: now,
+  };
+  await vput(store, svcBase(id), doc);
+  return doc;
+}
+
+async function deleteService(store, id) {
+  if (!DOC_ID_RE.test(String(id))) throw new HttpError(400, 'Unknown service.');
+  const r = await vlatest(store, svcBase(id));
+  if (!r || r.doc.deleted) throw new HttpError(404, 'That service no longer exists.');
+  await vput(store, svcBase(id), { ...r.doc, deleted: true, updatedAt: new Date().toISOString() });
+}
+
 function reply(status, body, extraHeaders) {
   return {
     statusCode: status,
@@ -1752,6 +1852,32 @@ exports.handler = async (event) => {
       if (body.action === 'cancel') return reply(200, await cancelBooking(store, user, body));
       if (body.action === 'complete') return reply(200, await completeBooking(store, user, body));
       throw new HttpError(400, 'Unknown action.');
+    }
+
+    if (route === 'lead' && method === 'POST') {
+      if (!user.admin) throw new HttpError(403, 'Only LeadThru can add leads here.');
+      return reply(200, { opportunity: await addLead(user, parseBody(event)) });
+    }
+
+    if (route === 'services') {
+      if (!user.admin) throw new HttpError(403, 'Only LeadThru can see services.');
+      if (method === 'GET') {
+        const agency = agencyPipelineOf(await pipelines());
+        const clients = agency ? (await listOpportunities(agency.id)).map(slim)
+          .map((o) => ({ id: o.id, name: o.name, stageId: o.stageId, status: o.status, contact: o.contact.name })) : [];
+        return reply(200, {
+          agency: agency ? { id: agency.id, name: agency.name, stages: agency.stages } : null,
+          clients,
+          services: store ? await listServices(store) : [],
+        });
+      }
+      if (method === 'POST') {
+        if (!store) throw new HttpError(503, 'Storage is not available right now.');
+        const body = parseBody(event);
+        if (body.action === 'save') return reply(200, { service: await saveService(store, user, body.service || {}) });
+        if (body.action === 'delete') { await deleteService(store, body.id); return reply(200, { deleted: body.id }); }
+        throw new HttpError(400, 'Unknown action.');
+      }
     }
 
     if (route === 'clients') {
