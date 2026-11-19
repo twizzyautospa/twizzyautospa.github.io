@@ -2227,24 +2227,33 @@
   }
   const svcList = () => [...state.svc.map.values()];
   // What one service earns in month mk (YYYY-MM).
-  function earned(s, mk) {
-    if (s.billing === 'monthly') {
-      const a = s.start.slice(0, 7);
-      const b = s.end ? s.end.slice(0, 7) : null;
-      return a <= mk && (!b || b >= mk) ? s.amount : 0;
-    }
-    return s.start.slice(0, 7) === mk ? s.amount : 0;
+  // A retainer bills on its start date, then on the same day each month while that date is before the
+  // end date (the end date itself is not billed): Oct 1 → Nov 1 is 1 month, Oct 1 → Nov 15 is 2.
+  // It always covers at least its first month, so an end date on or soon after the start is 1 month.
+  const nextMonthKey = (mk) => monthKeyOf(new Date(Number(mk.slice(0, 4)), Number(mk.slice(5)), 1));
+  function billDateIn(s, mk) {
+    const day = Math.min(Number(s.start.slice(8, 10)), new Date(Number(mk.slice(0, 4)), Number(mk.slice(5)), 0).getDate());
+    return `${mk}-${String(day).padStart(2, '0')}`;
   }
-  const isActiveMonthly = (s, today) => s.billing === 'monthly' && s.start <= today && (!s.end || s.end >= today);
-  function lifetime(s) {
+  const oneMonthOn = (s) => billDateIn(s, nextMonthKey(s.start.slice(0, 7)));
+  const retainerEnd = (s) => (s.end ? (s.end > oneMonthOn(s) ? s.end : oneMonthOn(s)) : null);
+  function earned(s, mk) {
+    if (s.billing !== 'monthly') return s.start.slice(0, 7) === mk ? s.amount : 0;
+    const d = billDateIn(s, mk);
+    const end = retainerEnd(s);
+    return d >= s.start && (!end || d < end) ? s.amount : 0;
+  }
+  const isActiveMonthly = (s, today) => s.billing === 'monthly' && s.start <= today && (!s.end || today < retainerEnd(s));
+  // Months billed so far (up to and including this month); for an ended retainer, all of them.
+  function billedMonths(s) {
     const cur = monthKeyOf(new Date());
-    if (s.billing !== 'monthly') return s.start.slice(0, 7) <= cur ? s.amount : 0;
-    const a = s.start.slice(0, 7);
-    let b = s.end ? s.end.slice(0, 7) : cur;
-    if (b > cur) b = cur;
-    if (a > b) return 0;
-    const months = (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5)) - Number(a.slice(5)) + 1;
-    return months * s.amount;
+    let n = 0;
+    for (let mk = s.start.slice(0, 7), i = 0; mk <= cur && i < 600; mk = nextMonthKey(mk), i++) if (earned(s, mk)) n++;
+    return n;
+  }
+  function lifetime(s) {
+    if (s.billing !== 'monthly') return s.start.slice(0, 7) <= monthKeyOf(new Date()) ? s.amount : 0;
+    return billedMonths(s) * s.amount;
   }
 
   // Stable colour per service name: the usual services first, then others by when they were first added.
@@ -2490,7 +2499,8 @@
     const row = (s) => {
       const active = isActiveMonthly(s, today);
       const when = s.billing === 'monthly'
-        ? `${active ? 'Since' : s.start > today ? 'Starts' : 'Ran'} ${prettyYmd(s.start)}${s.end ? ` → ${prettyYmd(s.end)}` : ''}`
+        ? `${active ? 'Since' : s.start > today ? 'Starts' : 'Ran'} ${prettyYmd(s.start)}${s.end ? ` → ${prettyYmd(s.end)}` : ''}${
+          s.end && !active && s.start <= today ? ` · ${billedMonths(s)} ${billedMonths(s) === 1 ? 'month' : 'months'}` : ''}`
         : `${prettyYmd(s.start)} · ${SVC_STATUS_LABEL[s.status] || 'Planned'}${s.status === 'delivered' ? (s.paid ? ' · Paid' : ' · Unpaid') : ''}`;
       return `<button type="button" class="svc-job" data-svce="${esc(s.id)}">
         <span class="svc-name"><b>${esc(s.service)}</b><span>${esc(when)}</span></span>
@@ -2530,7 +2540,8 @@
           <label class="field"><span>${billing === 'monthly' ? 'Per month' : 'Price'}</span><input id="svAmount" inputmode="decimal" value="${s.amount ? esc(s.amount) : ''}" placeholder="$0"></label>
           <label class="field"><span>${billing === 'monthly' ? 'Started' : 'Date'}</span><input id="svStart" type="date" value="${esc(s.start || dayKey(new Date()))}"></label>
         </div>
-        ${billing === 'monthly' ? `<label class="field"><span>Ended (leave blank if still active)</span><input id="svEnd" type="date" value="${esc(s.end || '')}"></label>` : `
+        ${billing === 'monthly' ? `<label class="field"><span>Ends (leave blank if ongoing)</span><input id="svEnd" type="date" value="${esc(s.end || '')}">
+          <span class="hint">Billed on the start date, then monthly until the end date. Oct 1 → Nov 1 counts as 1 month.</span></label>` : `
         <div class="field"><span>Status</span><div class="seg" role="group" aria-label="Status">${Object.entries(SVC_STATUS_LABEL)
           .map(([k, l]) => `<button type="button" data-svs="${k}" class="${(s.status || 'planned') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
         <label class="check"><input type="checkbox" id="svPaid"${s.paid ? ' checked' : ''}> Paid</label>`}
