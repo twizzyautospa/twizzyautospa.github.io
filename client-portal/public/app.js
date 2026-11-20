@@ -255,7 +255,7 @@
     }
     if (me.brand) applyBrand(me.brand); else clearBrand();
     $('#clientsBtn').hidden = !state.me.admin;
-    $('#svcTab').hidden = !state.me.admin;
+    $('#svcTab').hidden = false;
     $('#addLeadBtn').hidden = !state.me.admin;
     showView('home');
     $('#login').hidden = true;
@@ -281,6 +281,7 @@
       if (state.view === 'home') renderHome();
       loadBookings(true);
       loadInvoices();
+      if (state.svc.pid !== data.pipeline.id) loadServices(state.view === 'services');
     } catch (ex) {
       if (!state.me) return;
       if (!state.board) {
@@ -801,19 +802,20 @@
     return [...set];
   }
 
-  async function loadBookings(force) {
+  async function loadBookings(force, extra = []) {
     const pid = state.board && state.board.pipeline.id;
     if (!pid) return;
     if (state.bk.pid !== pid) state.bk = { pid, months: new Set(), map: new Map() };
-    const want = neededMonths().filter((m) => force || !state.bk.months.has(m));
-    if (want.length) {
+    const want = [...new Set([...neededMonths(), ...extra])].filter((m) => force ? neededMonths().includes(m) || !state.bk.months.has(m) : !state.bk.months.has(m));
+    for (let i = 0; i < want.length; i += 8) {
+      const chunk = want.slice(i, i + 8);
       try {
-        const q = `bookings?months=${want.join(',')}${state.me.admin ? `&pipeline=${encodeURIComponent(pid)}` : ''}`;
+        const q = `bookings?months=${chunk.join(',')}${state.me.admin ? `&pipeline=${encodeURIComponent(pid)}` : ''}`;
         const r = await api(q);
         if (state.bk.pid !== pid) return;
-        for (const [id, b] of state.bk.map) if (want.includes(b.month)) state.bk.map.delete(id);
+        for (const [id, b] of state.bk.map) if (chunk.includes(b.month)) state.bk.map.delete(id);
         for (const b of r.bookings) state.bk.map.set(b.id, b);
-        want.forEach((m) => state.bk.months.add(m));
+        chunk.forEach((m) => state.bk.months.add(m));
       } catch (ex) {
         if (state.view === 'calendar' && !force) toast(ex.message, true);
       }
@@ -834,12 +836,13 @@
     if (state.board && state.view === 'leads') render();
     else if (state.openId) renderSheetBookings(findOpp(state.openId) || {});
     if (booker.open && booker.mode === 'view') renderBookingView();
+    if (state.view === 'services') renderServices();
   }
 
   function bkCard(b, withDate) {
     const s = new Date(b.start);
     const past = new Date(b.end) < new Date();
-    const where = [b.amount > 0 && money(b.amount), b.address || phonePretty(b.lead.phone)].filter(Boolean).join(' · ');
+    const where = [b.service, b.amount > 0 && money(b.amount), b.address || phonePretty(b.lead.phone)].filter(Boolean).join(' · ');
     return `<div class="bk-card${past ? ' past' : ''}${b.completedAt ? ' done' : ''}" role="button" tabindex="0" data-bk="${esc(b.id)}">
       <div class="bk-time"><b>${esc(fmtTime(s))}</b><span>${esc(withDate ? fmtDay(s) : fmtLen(b.minutes))}</span></div>
       <div class="bk-main"><div class="bk-title">${b.completedAt ? icon('check', 'done-i') : ''}${esc(b.title)} · ${esc(b.lead.name)}</div>
@@ -1126,7 +1129,7 @@
     if (edit) {
       const s = new Date(edit.start);
       draft = {
-        id: edit.id, month: edit.month, oppId: edit.oppId, lockLead: true, title: edit.title,
+        id: edit.id, month: edit.month, oppId: edit.oppId, lockLead: true, title: edit.title, service: edit.service || '',
         date: dayKey(s), time: `${pad2(s.getHours())}:${pad2(s.getMinutes())}`, minutes: edit.minutes,
         address: edit.address, notes: edit.notes, stageId: '', amount: edit.amount || '', setValue: false,
         manual: !edit.oppId, lead: { ...edit.lead },
@@ -1134,7 +1137,7 @@
     } else {
       const lead = oppId ? findOpp(oppId) : null;
       draft = {
-        id: null, month: null, oppId, lockLead, title: closing ? 'Job' : 'Estimate', date: day || tomorrow, time: time || '09:00',
+        id: null, month: null, oppId, lockLead, title: closing ? 'Job' : 'Estimate', service: '', date: day || tomorrow, time: time || '09:00',
         minutes: closing ? 120 : 60, address: '', notes: '', stageId: '',
         amount: closing && lead && lead.value > 0 ? String(lead.value) : '', setValue: true, closing,
         manual: false, lead: { name: '', phone: '', email: '' },
@@ -1174,6 +1177,13 @@
         <div class="field"><span>What</span>
           <div class="quick">${KINDS.map((k) => `<button type="button" class="qchip${k === dr.title ? ' on' : ''}" data-kind="${esc(k)}">${esc(k)}</button>`).join('')}</div>
           <input id="bkTitle" maxlength="60" value="${esc(dr.title)}" aria-label="What is booked"></div>
+        ${(() => {
+          const cat = state.svc.pid === state.board.pipeline.id ? state.svc.catalog : [];
+          return `<div class="field"><span>Service</span>
+          ${cat.length ? `<div class="quick">${cat.map((c) => `<button type="button" class="qchip${svcKey(c.name) === svcKey(dr.service) ? ' on' : ''}" data-svc="${esc(c.name)}" data-price="${c.price || ''}">${esc(c.name)}</button>`).join('')}</div>` : ''}
+          <input id="bkService" maxlength="60" value="${esc(dr.service)}" placeholder="${cat.length ? 'Or type a new one' : 'e.g. Lawn care (optional)'}" aria-label="Service">
+          <span class="hint">Shows in your Services. A new name is added to your service list.</span></div>`;
+        })()}
         <div class="row2">
           <label class="field"><span>Date</span><input id="bkDate" type="date" value="${esc(dr.date)}" required></label>
           <label class="field"><span>Start time</span><input id="bkTime" type="time" step="900" value="${esc(dr.time)}" required></label>
@@ -1202,7 +1212,11 @@
     switch (e.target.id) {
       case 'bkTitle':
         dr.title = v;
-        document.querySelectorAll('.qchip').forEach((q) => q.classList.toggle('on', q.dataset.kind === v.trim()));
+        document.querySelectorAll('.qchip[data-kind]').forEach((q) => q.classList.toggle('on', q.dataset.kind === v.trim()));
+        break;
+      case 'bkService':
+        dr.service = v;
+        document.querySelectorAll('.qchip[data-svc]').forEach((q) => q.classList.toggle('on', svcKey(q.dataset.svc) === svcKey(v)));
         break;
       case 'bkDate': dr.date = v; break;
       case 'bkTime': dr.time = v; break;
@@ -1249,8 +1263,12 @@
         lead: dr.manual ? { name: dr.lead.name.trim(), phone: dr.lead.phone.trim(), email: dr.lead.email.trim() } : undefined,
         pipeline: pid,
         minutes: dr.minutes, title: dr.title.trim() || 'Appointment', address: dr.address.trim(), notes: dr.notes.trim(),
-        stageId: dr.stageId || undefined, tz: tz(), amount, setValue: !!dr.setValue && amount > 0,
+        stageId: dr.stageId || undefined, tz: tz(), amount, setValue: !!dr.setValue && amount > 0, service: (dr.service || '').trim(),
       });
+      const svcName = (dr.service || '').trim();
+      if (svcName && state.svc.pid === pid && !state.svc.catalog.some((c) => svcKey(c.name) === svcKey(svcName))) {
+        state.svc.catalog = [...state.svc.catalog, { name: svcName, billing: 'once', price: amount }];
+      }
       state.bk.map.set(r.booking.id, r.booking);
       rememberBooking(pid, r.booking.id, r.booking);
       if (r.opportunity) {
@@ -1308,7 +1326,7 @@
         <a class="btn sm ghost" href="${esc(googleLink(b))}" target="_blank" rel="noopener">${icon('cal')}Google</a></div>`;
     $('#bookerBody').innerHTML = `
       <h2 id="bookerTitle">${esc(b.title)}</h2>
-      <p class="sub">${esc(b.lead.name)}${o ? ` · ${esc((state.board.pipeline.stages.find((x) => x.id === o.stageId) || {}).name || '')}`
+      <p class="sub">${b.service ? `<b class="bk-svc">${esc(b.service)}</b> · ` : ''}${esc(b.lead.name)}${o ? ` · ${esc((state.board.pipeline.stages.find((x) => x.id === o.stageId) || {}).name || '')}`
         : b.manual ? " · not in your leads" : ''}</p>
       <div class="bk-when">${icon('cal')}<div><b>${esc(fmtDayLong(s))}</b><span>${esc(fmtTime(s))} – ${esc(fmtTime(e))} · ${esc(fmtLen(b.minutes))}${b.amount > 0 ? ` · ${esc(money(b.amount))}` : ''}</span></div></div>
       ${b.address ? `<a class="bk-addr" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.address)}" target="_blank" rel="noopener">${icon('pin')}${esc(b.address)}</a>` : ''}
@@ -1340,11 +1358,20 @@
   }
 
   $('#bookerBody').addEventListener('click', async (e) => {
-    const q = e.target.closest('.qchip');
+    const sq = e.target.closest('.qchip[data-svc]');
+    if (sq && booker.mode === 'form') {
+      const dr = booker.draft;
+      dr.service = sq.dataset.svc;
+      $('#bkService').value = sq.dataset.svc;
+      if (sq.dataset.price && !(Number(String(dr.amount || '').replace(/[^0-9.]/g, '')) > 0)) { dr.amount = sq.dataset.price; $('#bkAmount').value = sq.dataset.price; }
+      document.querySelectorAll('.qchip[data-svc]').forEach((x) => x.classList.toggle('on', x === sq));
+      return;
+    }
+    const q = e.target.closest('.qchip[data-kind]');
     if (q && booker.mode === 'form') {
       booker.draft.title = q.dataset.kind;
       $('#bkTitle').value = q.dataset.kind;
-      document.querySelectorAll('.qchip').forEach((x) => x.classList.toggle('on', x === q));
+      document.querySelectorAll('.qchip[data-kind]').forEach((x) => x.classList.toggle('on', x === q));
       return;
     }
     if (e.target.closest('#bkLater')) { closeBooker(); return; }
@@ -2194,7 +2221,7 @@
         state.stage = r.opportunity.stageId;
         render();
       }
-      if (state.svc.loaded && state.svc.agency && state.svc.agency.id === body.pipeline) loadServices();
+      if (state.view === 'services' && state.svc.pid === body.pipeline) renderServices();
       closeAdmPanel();
       toast(`${r.opportunity.name} added`);
     } catch (ex) {
@@ -2203,17 +2230,16 @@
     } finally { adm.busy = false; const b = $('#alSave'); if (b) b.disabled = false; }
   }
 
-  /* ---------------- admin: services (LeadThru's own retainers and jobs) ---------------- */
+  /* ---------------- services: what each business sells (its own list, monthly plans, and calendar jobs) ---------------- */
 
-  // Categorical slots validated on the dark panel surface (#0B0F0A); fixed order, never cycled.
-  const SVC_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#0ca30c', '#9085e9'];
-  const SVC_OTHER = '#5E665A';
-  const SVC_DEFAULTS = [
-    ['Meta ads retainer', 'monthly'], ['CRM portal', 'monthly'], ['Video package', 'once'],
-    ['Website', 'once'], ['Ad creatives', 'once'], ['Landing page', 'once'],
-  ];
+  // Categorical slots in a fixed order, never cycled; validated on the dark card surface and on white.
+  const SVC_COLORS_DARK = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#0ca30c', '#9085e9'];
+  const SVC_COLORS_LIGHT = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6'];
+  const svcPalette = () => (document.documentElement.classList.contains('client-theme') ? SVC_COLORS_LIGHT : SVC_COLORS_DARK);
+  const svcOther = () => (document.documentElement.classList.contains('client-theme') ? '#9CA3AF' : '#5E665A');
+  const OTHER_JOBS = 'Other jobs';
   const SVC_STATUS_LABEL = { planned: 'Planned', 'in progress': 'In progress', delivered: 'Delivered' };
-  state.svc = { loaded: false, error: null, agency: null, clients: [], map: new Map() };
+  state.svc = { pid: null, loaded: false, error: null, agency: false, catalog: [], map: new Map() };
   let svcTable = false;
 
   const svcKey = (name) => String(name || '').trim().toLowerCase();
@@ -2225,10 +2251,18 @@
     for (let i = n - 1; i >= 0; i--) out.push(monthKeyOf(new Date(d.getFullYear(), d.getMonth() - i, 1)));
     return out;
   }
+  // Booking months (UTC) the Services page needs: the last 12 months and the next 3.
+  function servicesMonths() {
+    const now = new Date();
+    const out = [];
+    for (let k = -12; k <= 3; k++) out.push(utcMonth(now.getFullYear(), now.getMonth() + k));
+    return out;
+  }
   const svcList = () => [...state.svc.map.values()];
-  // What one service earns in month mk (YYYY-MM).
-  // A retainer bills on its start date, then on the same day each month while that date is before the
-  // end date (the end date itself is not billed): Oct 1 → Nov 1 is 1 month, Oct 1 → Nov 15 is 2.
+  const svcCustomerWord = () => (state.svc.agency ? 'client' : 'customer');
+
+  // A retainer / monthly plan bills on its start date, then on the same day each month while that date is
+  // before the end date (the end date itself is not billed): Oct 1 → Nov 1 is 1 month, Oct 1 → Nov 15 is 2.
   // It always covers at least its first month, so an end date on or soon after the start is 1 month.
   const nextMonthKey = (mk) => monthKeyOf(new Date(Number(mk.slice(0, 4)), Number(mk.slice(5)), 1));
   function billDateIn(s, mk) {
@@ -2244,7 +2278,6 @@
     return d >= s.start && (!end || d < end) ? s.amount : 0;
   }
   const isActiveMonthly = (s, today) => s.billing === 'monthly' && s.start <= today && (!s.end || today < retainerEnd(s));
-  // Months billed so far (up to and including this month); for an ended retainer, all of them.
   function billedMonths(s) {
     const cur = monthKeyOf(new Date());
     let n = 0;
@@ -2256,52 +2289,80 @@
     return billedMonths(s) * s.amount;
   }
 
-  // Stable colour per service name: the usual services first, then others by when they were first added.
+  // Calendar jobs: every booking with a price or a service, in the month it starts (local time).
+  const svcJobs = () => allBookings().filter((b) => (b.amount > 0 || b.service));
+  const jobKey = (b) => svcKey(b.service || OTHER_JOBS);
+  const jobMonth = (b) => monthKeyOf(new Date(b.start));
+  const jobEarned = (b, mk) => (jobMonth(b) === mk ? (b.amount || 0) : 0);
+  function partsIn(mk) {
+    const parts = new Map();
+    const add = (k, v) => { if (v) parts.set(k, (parts.get(k) || 0) + v); };
+    for (const s of svcList()) add(svcKey(s.service), earned(s, mk));
+    for (const b of svcJobs()) add(jobKey(b), jobEarned(b, mk));
+    return parts;
+  }
+
+  // Stable colour per service: the business's own list order first, then other names as they appear.
   function serviceColors() {
-    const order = SVC_DEFAULTS.map(([n]) => svcKey(n));
-    const custom = svcList().slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
-    for (const s of custom) if (!order.includes(svcKey(s.service))) order.push(svcKey(s.service));
-    const used = new Set(svcList().map((s) => svcKey(s.service)));
+    const order = state.svc.catalog.map((c) => svcKey(c.name));
+    const extra = [...svcList().slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).map((s) => svcKey(s.service)),
+      ...svcJobs().filter((b) => b.service).map(jobKey)];
+    for (const k of extra) if (!order.includes(k)) order.push(k);
+    const pal = svcPalette();
     const map = new Map();
-    let slot = 0;
-    for (const k of order) {
-      if (!used.has(k)) continue;
-      map.set(k, slot < SVC_COLORS.length ? SVC_COLORS[slot] : SVC_OTHER);
-      slot++;
-    }
+    order.forEach((k, i) => map.set(k, i < pal.length ? pal[i] : svcOther()));
+    map.set(svcKey(OTHER_JOBS), svcOther());
     return map;
   }
   const displayName = (k) => {
-    const d = SVC_DEFAULTS.find(([n]) => svcKey(n) === k);
-    if (d) return d[0];
+    if (k === svcKey(OTHER_JOBS)) return OTHER_JOBS;
+    const c = state.svc.catalog.find((x) => svcKey(x.name) === k);
+    if (c) return c.name;
     const s = svcList().find((x) => svcKey(x.service) === k);
-    return s ? s.service : k;
+    if (s) return s.service;
+    const b = svcJobs().find((x) => jobKey(x) === k);
+    return b ? b.service : k;
   };
 
-  async function loadServices() {
-    try {
-      const r = await api('services');
-      const map = new Map(r.services.map((s) => [s.id, s]));
-      for (const x of svcPending()) {
-        if (!x.doc) map.delete(x.id);
-        else if (!map.has(x.id) || String(x.doc.updatedAt) >= String(map.get(x.id).updatedAt)) map.set(x.id, x.doc);
-      }
-      state.svc = { loaded: true, error: null, agency: r.agency, clients: r.clients, map };
-    } catch (ex) {
-      if (!state.svc.loaded) state.svc = { ...state.svc, error: ex.message };
-    }
-    if (state.view === 'services') renderServices();
-    if (adm.open && adm.mode === 'client') renderSvcClient(adm.draft);
-  }
   // This browser's recent saves, laid over the list while storage catches up.
-  const SVC_PENDING = 'lt_svc_pending';
-  function svcPending() {
-    try { return JSON.parse(localStorage.getItem(SVC_PENDING) || '[]').filter((x) => Date.now() - x.at < 10 * 60e3); } catch { return []; }
+  const svcPendKey = (pid) => `lt_svc_pending_${pid}`;
+  function svcPending(pid) {
+    try { return JSON.parse(localStorage.getItem(svcPendKey(pid)) || '[]').filter((x) => Date.now() - x.at < 10 * 60e3); } catch { return []; }
   }
   function rememberSvc(id, doc) {
-    const list = svcPending().filter((x) => x.id !== id);
+    const pid = state.svc.pid;
+    const list = svcPending(pid).filter((x) => x.id !== id);
     list.push({ id, doc, at: Date.now() });
-    try { localStorage.setItem(SVC_PENDING, JSON.stringify(list)); } catch { /* private mode */ }
+    try { localStorage.setItem(svcPendKey(pid), JSON.stringify(list)); } catch { /* private mode */ }
+  }
+
+  // full=false: just the service list (for the booking form). full=true: plans, jobs and 15 months of calendar jobs.
+  async function loadServices(full = true) {
+    const pid = state.board && state.board.pipeline.id;
+    if (!pid) return;
+    if (state.svc.pid !== pid) state.svc = { pid, loaded: false, error: null, agency: false, catalog: [], map: new Map() };
+    try {
+      const q = [state.me.admin && `pipeline=${encodeURIComponent(pid)}`, !full && 'part=catalog'].filter(Boolean).join('&');
+      const r = await api(`services${q ? `?${q}` : ''}`);
+      if (state.svc.pid !== pid) return;
+      state.svc.agency = r.agency;
+      state.svc.catalog = r.catalog || [];
+      if (full) {
+        const map = new Map(r.services.map((s) => [s.id, s]));
+        for (const x of svcPending(pid)) {
+          if (!x.doc) map.delete(x.id);
+          else if (!map.has(x.id) || String(x.doc.updatedAt) >= String(map.get(x.id).updatedAt)) map.set(x.id, x.doc);
+        }
+        state.svc.map = map;
+        state.svc.loaded = true;
+        state.svc.error = null;
+      }
+    } catch (ex) {
+      if (full && !state.svc.loaded) state.svc.error = ex.message;
+    }
+    if (full) loadBookings(false, servicesMonths());
+    if (state.view === 'services') renderServices();
+    if (adm.open && adm.mode === 'client') renderSvcClient(adm.draft);
   }
 
   const niceMax = (v) => {
@@ -2313,20 +2374,17 @@
 
   function svcChart(months, colors) {
     const rows = months.map((mk) => {
-      const parts = new Map();
-      for (const s of svcList()) {
-        const v = earned(s, mk);
-        if (v) { const k = svcKey(s.service); parts.set(k, (parts.get(k) || 0) + v); }
-      }
+      const parts = partsIn(mk);
       const total = [...parts.values()].reduce((t, v) => t + v, 0);
       const monthly = svcList().filter((s) => s.billing === 'monthly').reduce((t, s) => t + earned(s, mk), 0);
       return { mk, parts, total, monthly };
     });
+    svcChart.rows = rows;
     const max = niceMax(Math.max(...rows.map((r) => r.total)));
     const keys = [...colors.keys()];
     const present = keys.filter((k) => rows.some((r) => r.parts.has(k)));
     if (svcTable) {
-      return `<table class="svc-table"><thead><tr><th>Month</th><th>Retainers</th><th>One-off</th><th>Total</th></tr></thead><tbody>${
+      return `<table class="svc-table"><thead><tr><th>Month</th><th>Monthly</th><th>Jobs</th><th>Total</th></tr></thead><tbody>${
         rows.slice().reverse().map((r) => `<tr><td>${esc(monthLabel(r.mk, { month: 'short', year: 'numeric' }))}</td><td>${esc(money(r.monthly))}</td><td>${esc(money(r.total - r.monthly))}</td><td><b>${esc(money(r.total))}</b></td></tr>`).join('')}</tbody></table>`;
     }
     const grid = [1, 0.5, 0].map((f) => `<div class="sc-line" style="bottom:${f * 100}%"><span>${esc(shortMoney(max * f))}</span></div>`).join('');
@@ -2337,8 +2395,7 @@
         <span class="sc-bar">${last && r.total ? `<em>${esc(shortMoney(r.total))}</em>` : ''}<span class="sc-stack" style="height:${(r.total / max) * 100}%">${segs}</span></span>
         <span class="sc-x">${esc(monthLabel(r.mk).slice(0, 3))}</span></button>`;
     }).join('');
-    const legend = present.length > 1 || present.length === 0 ? `<div class="sc-legend">${present.map((k) => `<span><i style="background:${colors.get(k)}"></i>${esc(displayName(k))}</span>`).join('')}</div>` : '';
-    svcChart.rows = rows;
+    const legend = present.length > 1 ? `<div class="sc-legend">${present.map((k) => `<span><i style="background:${colors.get(k)}"></i>${esc(displayName(k))}</span>`).join('')}</div>` : '';
     return `${legend}<div class="sc" role="group" aria-label="Revenue by month, last 12 months"><div class="sc-plot">${grid}<div class="sc-cols">${cols}</div></div><div class="sc-tip" hidden></div></div>`;
   }
 
@@ -2350,95 +2407,131 @@
     return `<b class="tt">${esc(monthLabel(mk, { month: 'long', year: 'numeric' }))}</b><span class="tl total">Total<b>${esc(money(r.total))}</b></span>${lines || '<span class="tl">Nothing earned</span>'}`;
   }
 
-  function renderServices() {
-    const box = $('#svcView');
-    if (!state.svc.loaded) {
-      box.innerHTML = state.svc.error ? `<div class="err-box">${esc(state.svc.error)}</div>` : '<div class="empty">Loading…</div>';
-      return;
+  // One row in the Jobs list: a calendar booking or a one-off entered by hand.
+  function jobRowHtml(x) {
+    if (x.kind === 'bk') {
+      const b = x.b;
+      const past = new Date(b.end) < new Date();
+      const pill = b.completedAt ? '<span class="pill paid">Done</span>' : past ? '<span class="pill">Past</span>' : '<span class="pill sent">Booked</span>';
+      return `<button type="button" class="svc-job" data-bk="${esc(b.id)}">
+        <span class="svc-date">${esc(prettyYmd(dayKey(new Date(b.start))))}</span>
+        <span class="svc-name"><b>${esc(b.lead.name)}</b><span>${esc(b.service || b.title)}</span></span>
+        <span class="svc-amt"><b>${b.amount > 0 ? esc(money(b.amount)) : '—'}</b><span class="pills">${icon('cal', 'svc-cal')}${pill}</span></span></button>`;
     }
-    if (!state.svc.agency) {
-      box.innerHTML = '<div class="empty">Make a pipeline in GHL named <b>LeadThru Sales</b> for your own clients, then refresh.</div>';
-      return;
-    }
-    const today = dayKey(new Date());
-    const cur = monthKeyOf(new Date());
-    const year = cur.slice(0, 4);
-    const list = svcList();
-    const colors = serviceColors();
-    const mrr = list.filter((s) => isActiveMonthly(s, today)).reduce((t, s) => t + s.amount, 0);
-    const monthTotal = list.reduce((t, s) => t + earned(s, cur), 0);
-    const ytdMonths = lastMonths(12).filter((mk) => mk.startsWith(year));
-    const ytd = list.reduce((t, s) => t + ytdMonths.reduce((u, mk) => u + earned(s, mk), 0), 0);
-    const unpaid = list.filter((s) => s.billing === 'once' && s.status === 'delivered' && !s.paid);
-    const activeClients = new Set(list.filter((s) => isActiveMonthly(s, today)).map((s) => s.oppId || s.client)).size;
-
-    // By service, this year.
-    const byService = new Map();
-    for (const s of list) {
-      const v = ytdMonths.reduce((u, mk) => u + earned(s, mk), 0);
-      if (!v) continue;
-      const k = svcKey(s.service);
-      const cur2 = byService.get(k) || { total: 0, monthly: false, once: false };
-      cur2.total += v;
-      cur2[s.billing === 'monthly' ? 'monthly' : 'once'] = true;
-      byService.set(k, cur2);
-    }
-    const svcRows = [...byService].sort((a, b) => b[1].total - a[1].total).map(([k, x]) => `
-      <div class="svc-row"><i class="sw" style="background:${colors.get(k) || SVC_OTHER}"></i>
-        <span class="svc-name"><b>${esc(displayName(k))}</b><span>${x.monthly && x.once ? 'Monthly + one-off' : x.monthly ? 'Monthly' : 'One-off'}</span></span>
-        <span class="svc-amt"><b>${esc(money(x.total))}</b><span>${ytd ? Math.round((x.total / ytd) * 100) : 0}%</span></span></div>`).join('');
-
-    // Clients.
-    const clients = state.svc.clients.map((c) => {
-      const mine = list.filter((s) => s.oppId === c.id);
-      return {
-        ...c, mine,
-        mrr: mine.filter((s) => isActiveMonthly(s, today)).reduce((t, s) => t + s.amount, 0),
-        year: mine.reduce((t, s) => t + ytdMonths.reduce((u, mk) => u + earned(s, mk), 0), 0),
-        life: mine.reduce((t, s) => t + lifetime(s), 0),
-      };
-    });
-    const loose = list.filter((s) => !s.oppId || !state.svc.clients.some((c) => c.id === s.oppId));
-    const stageName = (id) => ((state.svc.agency.stages.find((st) => st.id === id) || {}).name || '');
-    const clientRows = clients.sort((a, b) => b.mrr - a.mrr || b.year - a.year || a.name.localeCompare(b.name)).map((c) => `
-      <button type="button" class="svc-client" data-svcc="${esc(c.id)}">
-        <span class="svc-name"><b>${esc(c.name)}</b><span>${c.mine.length ? esc([...new Set(c.mine.map((s) => s.service))].join(' · ')) : `${esc(stageName(c.stageId))} · no services yet`}</span></span>
-        <span class="svc-amt">${c.mrr ? `<b>${esc(money(c.mrr))}<small>/mo</small></b>` : '<b class="dim">—</b>'}<span>${esc(money(c.life))} total</span></span>
-      </button>`).join('');
-
-    // One-off jobs: open ones first (soonest first), then recently delivered.
-    const jobs = list.filter((s) => s.billing === 'once');
-    const open = jobs.filter((s) => s.status !== 'delivered').sort((a, b) => a.start.localeCompare(b.start));
-    const done = jobs.filter((s) => s.status === 'delivered').sort((a, b) => b.start.localeCompare(a.start)).slice(0, 8);
-    const jobRow = (s) => `<button type="button" class="svc-job" data-svce="${esc(s.id)}">
+    const s = x.s;
+    return `<button type="button" class="svc-job" data-svce="${esc(s.id)}">
         <span class="svc-date">${esc(prettyYmd(s.start))}</span>
         <span class="svc-name"><b>${esc(s.client)}</b><span>${esc(s.service)}</span></span>
         <span class="svc-amt"><b>${esc(money(s.amount))}</b><span class="pills"><span class="pill ${s.status === 'delivered' ? 'paid' : 'sent'}">${esc(SVC_STATUS_LABEL[s.status] || 'Planned')}</span>${s.status === 'delivered' && !s.paid ? '<span class="pill overdue">Unpaid</span>' : ''}</span></span>
       </button>`;
+  }
+
+  function renderServices() {
+    const box = $('#svcView');
+    if (!state.board || state.svc.pid !== state.board.pipeline.id || !state.svc.loaded) {
+      box.innerHTML = state.svc.error ? `<div class="err-box">${esc(state.svc.error)}</div>` : '<div class="empty">Loading…</div>';
+      return;
+    }
+    const today = dayKey(new Date());
+    const now = new Date();
+    const cur = monthKeyOf(now);
+    const year = cur.slice(0, 4);
+    const list = svcList();
+    const jobs = svcJobs();
+    const colors = serviceColors();
+    const ytdMonths = lastMonths(12).filter((mk) => mk.startsWith(year));
+    const sumParts = (months) => months.reduce((t, mk) => t + [...partsIn(mk).values()].reduce((u, v) => u + v, 0), 0);
+    const mrr = list.filter((s) => isActiveMonthly(s, today)).reduce((t, s) => t + s.amount, 0);
+    const monthTotal = sumParts([cur]);
+    const ytd = sumParts(ytdMonths);
+    const aheadJobs = jobs.filter((b) => new Date(b.start) > now && b.amount > 0);
+    const aheadOnce = list.filter((s) => s.billing === 'once' && s.start > today && s.status !== 'delivered');
+    const ahead = aheadJobs.reduce((t, b) => t + b.amount, 0) + aheadOnce.reduce((t, s) => t + s.amount, 0);
+    const word = svcCustomerWord();
+    const opps = state.board.opportunities;
+
+    // By service, this year.
+    const byService = new Map();
+    const bump = (k, v, monthly) => {
+      if (!v) return;
+      const x = byService.get(k) || { total: 0, monthly: false, once: false };
+      x.total += v;
+      x[monthly ? 'monthly' : 'once'] = true;
+      byService.set(k, x);
+    };
+    for (const s of list) bump(svcKey(s.service), ytdMonths.reduce((u, mk) => u + earned(s, mk), 0), s.billing === 'monthly');
+    for (const b of jobs) bump(jobKey(b), ytdMonths.reduce((u, mk) => u + jobEarned(b, mk), 0), false);
+    const svcRows = [...byService].sort((a, b) => b[1].total - a[1].total).map(([k, x]) => `
+      <div class="svc-row"><i class="sw" style="background:${colors.get(k) || svcOther()}"></i>
+        <span class="svc-name"><b>${esc(displayName(k))}</b><span>${x.monthly && x.once ? 'Monthly + one-off' : x.monthly ? 'Monthly' : 'One-off'}</span></span>
+        <span class="svc-amt"><b>${esc(money(x.total))}</b><span>${ytd ? Math.round((x.total / ytd) * 100) : 0}%</span></span></div>`).join('');
+
+    // The business's own service list.
+    const catRows = state.svc.catalog.map((c, i) => {
+      const yr = byService.get(svcKey(c.name));
+      return `<button type="button" class="svc-client" data-cat="${i}"><i class="sw" style="background:${colors.get(svcKey(c.name)) || svcOther()}"></i>
+        <span class="svc-name"><b>${esc(c.name)}</b><span>${c.billing === 'monthly' ? 'Monthly' : 'One-off'}${c.price > 0 ? ` · ${esc(money(c.price))}${c.billing === 'monthly' ? '/mo' : ''}` : ''}</span></span>
+        <span class="svc-amt"><b>${yr ? esc(money(yr.total)) : '<span class="dim">—</span>'}</b><span>${esc(year)}</span></span></button>`;
+    }).join('');
+
+    // Customers with services or priced jobs (the agency sees every client in its pipeline).
+    const custRows = opps.map((o) => {
+      const mine = list.filter((s) => s.oppId === o.id);
+      const myJobs = jobs.filter((b) => b.oppId === o.id && new Date(b.start) <= now);
+      return {
+        o, mine, myJobs,
+        mrr: mine.filter((s) => isActiveMonthly(s, today)).reduce((t, s) => t + s.amount, 0),
+        life: mine.reduce((t, s) => t + lifetime(s), 0) + myJobs.reduce((t, b) => t + (b.amount || 0), 0),
+      };
+    }).filter((c) => state.svc.agency || c.mine.length || c.myJobs.length)
+      .sort((a, b) => b.mrr - a.mrr || b.life - a.life || a.o.name.localeCompare(b.o.name));
+    const stageName = (id) => ((state.board.pipeline.stages.find((st) => st.id === id) || {}).name || '');
+    const custHtml = custRows.slice(0, state.svc.agency ? 200 : 25).map((c) => {
+      const names = [...new Set([...c.mine.map((s) => s.service), ...c.myJobs.map((b) => b.service || b.title)])];
+      return `<button type="button" class="svc-client" data-svcc="${esc(c.o.id)}">
+        <span class="svc-name"><b>${esc(c.o.name)}</b><span>${names.length ? esc(names.join(' · ')) : `${esc(stageName(c.o.stageId))} · nothing yet`}</span></span>
+        <span class="svc-amt">${c.mrr ? `<b>${esc(money(c.mrr))}<small>/mo</small></b>` : `<b>${c.life ? esc(money(c.life)) : '<span class="dim">—</span>'}</b>`}<span>${c.mrr ? `${esc(money(c.life))} total` : 'total'}</span></span>
+      </button>`;
+    }).join('');
+    const loose = list.filter((s) => !s.oppId || !opps.some((o) => o.id === s.oppId));
+
+    // Jobs: coming up first (soonest), then recent ones.
+    const items = [...jobs.map((b) => ({ kind: 'bk', b, at: dayKey(new Date(b.start)), done: new Date(b.end) < now || !!b.completedAt })),
+      ...list.filter((s) => s.billing === 'once').map((s) => ({ kind: 'svc', s, at: s.start, done: s.status === 'delivered' }))];
+    const upcoming = items.filter((x) => !x.done).sort((a, b) => a.at.localeCompare(b.at)).slice(0, 8);
+    const recent = items.filter((x) => x.done).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 8);
 
     box.innerHTML = `
       <div class="svc-top">
-        <div><h2>Your services</h2><p class="sub">Clients from <b>${esc(state.svc.agency.name)}</b> · ${activeClients} on a retainer</p></div>
-        <button class="btn sm" type="button" data-svca="new">${icon('plus')}Add service</button>
+        <div><h2>Your services</h2><p class="sub">${state.svc.agency
+          ? `Clients from <b>${esc(state.board.pipeline.name)}</b> · ${list.filter((s) => isActiveMonthly(s, today)).length} on a retainer`
+          : 'Jobs you book on your calendar are counted here automatically.'}</p></div>
+        <div class="svc-btns">
+          <button class="btn sm ghost" type="button" data-svca="add">${icon('plus')}${state.svc.agency ? 'Retainer / job' : 'Monthly plan'}</button>
+          <button class="btn sm" type="button" data-svca="book">${icon('cal')}Book a job</button>
+        </div>
       </div>
       <div class="rev svc-kpis">
-        <div class="rev-tile"><span class="l">Monthly recurring</span><b>${esc(money(mrr))}</b><span class="s">Active retainers</span></div>
         <div class="rev-tile"><span class="l">This month</span><b>${esc(money(monthTotal))}</b><span class="s">${esc(monthLabel(cur, { month: 'long' }))}</span></div>
+        <div class="rev-tile"><span class="l">Monthly recurring</span><b>${esc(money(mrr))}</b><span class="s">${state.svc.agency ? 'Active retainers' : 'Active monthly plans'}</span></div>
         <div class="rev-tile"><span class="l">This year</span><b>${esc(money(ytd))}</b><span class="s">${esc(year)} so far</span></div>
-        <div class="rev-tile"><span class="l">Unpaid jobs</span><b>${esc(money(unpaid.reduce((t, s) => t + s.amount, 0)))}</b><span class="s">${unpaid.length ? `${unpaid.length} delivered, not paid` : 'All paid'}</span></div>
+        <div class="rev-tile"><span class="l">Booked ahead</span><b>${esc(money(ahead))}</b><span class="s">${aheadJobs.length + aheadOnce.length} upcoming ${aheadJobs.length + aheadOnce.length === 1 ? 'job' : 'jobs'}</span></div>
       </div>
       <section class="svc-card">
         <div class="svc-h"><h3>Revenue by month</h3><div class="seg" role="group" aria-label="Chart or table"><button type="button" data-svct="chart" class="${svcTable ? '' : 'on'}">Chart</button><button type="button" data-svct="table" class="${svcTable ? 'on' : ''}">Table</button></div></div>
-        ${list.length ? svcChart(lastMonths(12), colors) : '<div class="empty">Add your retainers and jobs to see what you make each month.</div>'}
+        ${list.length || jobs.length ? svcChart(lastMonths(12), colors) : '<div class="empty">Book priced jobs on your calendar, or add monthly plans, to see what you make each month.</div>'}
       </section>
       <div class="svc-grid">
+        <section class="svc-card"><div class="svc-h"><h3>Your service list</h3><button class="btn sm ghost" type="button" data-svca="cat">${icon('plus')}New</button></div>
+          ${catRows || `<div class="empty">Add the services you offer${state.svc.agency ? '' : ', like Lawn care or Interlock'}. Then pick one when you book a job.</div>`}</section>
         <section class="svc-card"><div class="svc-h"><h3>By service · ${esc(year)}</h3></div>${svcRows || '<div class="empty">Nothing earned yet this year.</div>'}</section>
-        <section class="svc-card"><div class="svc-h"><h3>Jobs</h3><button class="btn sm ghost" type="button" data-svca="job">${icon('plus')}Job</button></div>
-          ${open.length || done.length ? `${open.map(jobRow).join('')}${done.length ? `<p class="svc-sub">Delivered</p>${done.map(jobRow).join('')}` : ''}` : '<div class="empty">One-off work (videos, websites…) shows here.</div>'}</section>
       </div>
-      <section class="svc-card"><div class="svc-h"><h3>Clients</h3><span class="svc-note">Tap a client to add or change services</span></div>
-        ${clientRows || '<div class="empty">No leads in LeadThru Sales yet.</div>'}
-        ${loose.length ? `<p class="svc-sub">Not linked to a lead</p>${loose.map(jobRow).join('')}` : ''}</section>`;
+      <section class="svc-card"><div class="svc-h"><h3>Jobs</h3><button class="btn sm ghost" type="button" data-svca="book">${icon('plus')}Book</button></div>
+        ${upcoming.length || recent.length ? `${upcoming.length ? `<p class="svc-sub">Coming up</p>${upcoming.map(jobRowHtml).join('')}` : ''}${recent.length ? `<p class="svc-sub">Recent</p>${recent.map(jobRowHtml).join('')}` : ''}`
+          : '<div class="empty">Priced jobs from your calendar show here.</div>'}</section>
+      <section class="svc-card"><div class="svc-h"><h3>${state.svc.agency ? 'Clients' : 'Customers'}</h3><span class="svc-note">Tap one to see everything they've had done</span></div>
+        ${custHtml || `<div class="empty">No ${word}s with jobs yet.</div>`}
+        ${loose.length ? `<p class="svc-sub">Not linked to a lead</p>${loose.map((s) => jobRowHtml({ kind: 'svc', s })).join('')}` : ''}</section>`;
   }
 
   function showTip(col) {
@@ -2468,6 +2561,19 @@
   $('#svcView').addEventListener('mouseout', (e) => { if (!e.relatedTarget || !e.relatedTarget.closest || !e.relatedTarget.closest('.sc-col')) hideTip(); });
   $('#svcView').addEventListener('focusin', (e) => { const c = e.target.closest('.sc-col'); if (c) showTip(c); });
 
+  // Open the booking form from the Services page (closing the services panel first, keeping history tidy).
+  function fromAdm(open) {
+    if (adm.open) {
+      adm.open = false;
+      adm.mode = null;
+      $('#admScrim').hidden = true;
+      $('#admPanel').hidden = true;
+      if (history.state && history.state.adm) history.replaceState({ booker: 1 }, '');
+    }
+    open();
+  }
+  const bookFromServices = (opts) => fromAdm(() => openBookingForm(opts));
+
   $('#svcView').addEventListener('click', (e) => {
     const col = e.target.closest('.sc-col');
     if (col) { showTip(col); return; }
@@ -2475,13 +2581,53 @@
     const t = e.target.closest('[data-svct]');
     if (t) { svcTable = t.dataset.svct === 'table'; renderServices(); return; }
     const a = e.target.closest('[data-svca]');
-    if (a) { openServiceEditor({ billing: a.dataset.svca === 'job' ? 'once' : 'monthly' }); return; }
+    if (a) {
+      if (a.dataset.svca === 'book') bookFromServices({});
+      else if (a.dataset.svca === 'cat') openCatalogEditor(-1);
+      else openServiceEditor({ billing: 'monthly' });
+      return;
+    }
+    const cat = e.target.closest('[data-cat]');
+    if (cat) { openCatalogEditor(Number(cat.dataset.cat)); return; }
     const c = e.target.closest('[data-svcc]');
     if (c) { openSvcClient(c.dataset.svcc); return; }
+    const bk = e.target.closest('[data-bk]');
+    if (bk) { openBookingView(bk.dataset.bk); return; }
     const j = e.target.closest('[data-svce]');
     if (j) { const s = state.svc.map.get(j.dataset.svce); if (s) openServiceEditor(s); }
   });
 
+  /* ---- the business's service list ---- */
+  function openCatalogEditor(i) {
+    const c = state.svc.catalog[i] || { name: '', billing: 'once', price: 0 };
+    adm.mode = 'cat';
+    adm.draft = { i, ...c };
+    $('#admBody').innerHTML = `
+      <h2>${i >= 0 ? 'Edit service' : 'New service'}</h2>
+      <p class="sub">Shows as a choice when you book a job, with its usual price filled in.</p>
+      <form class="cf" id="catForm" novalidate>
+        <label class="field"><span>Name</span><input id="ctName" maxlength="60" value="${esc(c.name)}" placeholder="${state.svc.agency ? 'Meta ads retainer' : 'Lawn care'}"></label>
+        <div class="field"><span>Billing</span><div class="seg" role="group" aria-label="Billing">
+          <button type="button" data-cbill="once" class="${c.billing !== 'monthly' ? 'on' : ''}">One-off job</button><button type="button" data-cbill="monthly" class="${c.billing === 'monthly' ? 'on' : ''}">Monthly plan</button></div></div>
+        <div class="field"><span>Usual price (optional)</span><div class="price"><input id="ctPrice" inputmode="decimal" placeholder="0" value="${c.price > 0 ? esc(c.price) : ''}"></div></div>
+        <p class="err" id="ctErr" hidden></p>
+        <button class="btn" type="submit" id="ctSave">${icon('check')}Save</button>
+        ${i >= 0 ? '<button class="btn ghost danger" type="button" id="ctDelete">Remove from my list</button>' : ''}
+      </form>`;
+    if (!adm.open) showAdmPanel(); else $('#admPanel').scrollTop = 0;
+    if (i < 0) setTimeout(() => $('#ctName').focus(), 60);
+  }
+
+  async function saveCatalogList(items, msg) {
+    const pid = state.svc.pid;
+    const r = await api('services', { action: 'catalog', pipeline: pid, catalog: items });
+    if (state.svc.pid === pid) state.svc.catalog = r.catalog;
+    toast(msg);
+    closeAdmPanel();
+    if (state.view === 'services') renderServices();
+  }
+
+  /* ---- a customer's services and jobs ---- */
   function openSvcClient(oppId) {
     adm.mode = 'client';
     adm.draft = oppId;
@@ -2489,13 +2635,15 @@
     showAdmPanel();
   }
   function renderSvcClient(oppId) {
-    const c = state.svc.clients.find((x) => x.id === oppId);
+    const c = state.board && findOpp(oppId);
     if (!c) { closeAdmPanel(); return; }
     const today = dayKey(new Date());
+    const now = new Date();
     const mine = svcList().filter((s) => s.oppId === oppId).sort((a, b) => (a.billing === b.billing ? b.start.localeCompare(a.start) : a.billing === 'monthly' ? -1 : 1));
+    const myJobs = svcJobs().filter((b) => b.oppId === oppId).sort((a, b) => b.start.localeCompare(a.start));
     const mrr = mine.filter((s) => isActiveMonthly(s, today)).reduce((t, s) => t + s.amount, 0);
-    const life = mine.reduce((t, s) => t + lifetime(s), 0);
-    const stage = (state.svc.agency.stages.find((st) => st.id === c.stageId) || {}).name || '';
+    const life = mine.reduce((t, s) => t + lifetime(s), 0) + myJobs.filter((b) => new Date(b.start) <= now).reduce((t, b) => t + (b.amount || 0), 0);
+    const stage = (state.board.pipeline.stages.find((st) => st.id === c.stageId) || {}).name || '';
     const row = (s) => {
       const active = isActiveMonthly(s, today);
       const when = s.billing === 'monthly'
@@ -2508,34 +2656,39 @@
     };
     $('#admBody').innerHTML = `
       <h2>${esc(c.name)}</h2>
-      <p class="sub">${esc(stage)}${c.contact && c.contact !== c.name ? ` · ${esc(c.contact)}` : ''}</p>
-      <div class="rev"><div class="rev-tile"><span class="l">Monthly</span><b>${esc(money(mrr))}</b><span class="s">Active retainers</span></div>
-        <div class="rev-tile"><span class="l">Earned so far</span><b>${esc(money(life))}</b><span class="s">All services</span></div></div>
-      <div class="svc-list">${mine.length ? mine.map(row).join('') : '<div class="empty">No services yet.</div>'}</div>
+      <p class="sub">${esc(stage)}${c.contact && c.contact.name && c.contact.name !== c.name ? ` · ${esc(c.contact.name)}` : ''}</p>
+      <div class="rev"><div class="rev-tile"><span class="l">Monthly</span><b>${esc(money(mrr))}</b><span class="s">${state.svc.agency ? 'Active retainers' : 'Active plans'}</span></div>
+        <div class="rev-tile"><span class="l">Earned so far</span><b>${esc(money(life))}</b><span class="s">Plans and jobs</span></div></div>
+      <div class="svc-list">${mine.map(row).join('')}${myJobs.map((b) => jobRowHtml({ kind: 'bk', b })).join('')}${mine.length || myJobs.length ? '' : '<div class="empty">Nothing yet.</div>'}</div>
       <div class="svc-actions">
-        <button class="btn" type="button" data-svcadd="monthly">${icon('plus')}Retainer</button>
-        <button class="btn ghost" type="button" data-svcadd="once">${icon('plus')}One-off job</button>
-      </div>`;
+        <button class="btn" type="button" data-svcbook="1">${icon('cal')}Book a job</button>
+        <button class="btn ghost" type="button" data-svcadd="monthly">${icon('plus')}${state.svc.agency ? 'Retainer' : 'Monthly plan'}</button>
+      </div>
+      <button class="link-btn" type="button" data-svcadd="once">${icon('plus')}Add a past job that isn't on the calendar</button>`;
   }
 
+  /* ---- a monthly plan / retainer, or a one-off job entered by hand ---- */
   function openServiceEditor(s = {}) {
     const editing = !!s.id;
     adm.mode = 'service';
     adm.draft = { ...s };
     const billing = s.billing || 'monthly';
-    const clientOpts = state.svc.clients.slice().sort((a, b) => a.name.localeCompare(b.name))
-      .map((c) => `<option value="${esc(c.id)}"${c.id === s.oppId ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
-    const names = [...new Set([...SVC_DEFAULTS.map(([n]) => n), ...svcList().map((x) => x.service)])];
+    const word = svcCustomerWord();
+    const opps = state.board.opportunities.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const clientOpts = opps.map((c) => `<option value="${esc(c.id)}"${c.id === s.oppId ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+    const choices = state.svc.catalog.filter((c) => (c.billing === 'monthly') === (billing === 'monthly'));
+    const names = [...new Set([...state.svc.catalog.map((c) => c.name), ...svcList().map((x) => x.service)])];
+    const planWord = state.svc.agency ? 'retainer' : 'monthly plan';
     $('#admBody').innerHTML = `
-      <h2>${editing ? 'Edit service' : billing === 'monthly' ? 'Add a retainer' : 'Add a job'}</h2>
-      <p class="sub">${billing === 'monthly' ? 'Counts every month from the start date until it ends.' : 'Counts once, in the month of its date.'}</p>
+      <h2>${editing ? 'Edit' : billing === 'monthly' ? `Add a ${planWord}` : 'Add a past job'}</h2>
+      <p class="sub">${billing === 'monthly' ? 'Counts every month from the start date until it ends.' : 'For work that isn\'t on your calendar. Counts once, in the month of its date.'}</p>
       <form class="cf" id="svcForm" novalidate>
-        <label class="field"><span>Client</span><select id="svClient">${s.oppId ? '' : '<option value="">Pick a client…</option>'}${clientOpts}</select></label>
+        <label class="field"><span>${word === 'client' ? 'Client' : 'Customer'}</span><select id="svClient">${s.oppId ? '' : `<option value="">Pick a ${word}…</option>`}${clientOpts}</select></label>
         <div class="field"><span>Billing</span><div class="seg" role="group" aria-label="Billing">
-          <button type="button" data-bill="monthly" class="${billing === 'monthly' ? 'on' : ''}">Monthly retainer</button><button type="button" data-bill="once" class="${billing === 'once' ? 'on' : ''}">One-off job</button></div></div>
-        <label class="field"><span>Service</span><input id="svName" maxlength="60" list="svNames" value="${esc(s.service || '')}" placeholder="${billing === 'monthly' ? 'Meta ads retainer' : 'Video package'}"></label>
+          <button type="button" data-bill="monthly" class="${billing === 'monthly' ? 'on' : ''}">Monthly</button><button type="button" data-bill="once" class="${billing === 'once' ? 'on' : ''}">One-off</button></div></div>
+        <label class="field"><span>Service</span><input id="svName" maxlength="60" list="svNames" value="${esc(s.service || '')}" placeholder="${billing === 'monthly' ? (state.svc.agency ? 'Meta ads retainer' : 'Monthly lawn care') : 'Website'}"></label>
         <datalist id="svNames">${names.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
-        <div class="quick">${SVC_DEFAULTS.filter(([, b]) => b === billing).map(([n]) => `<button type="button" class="qchip" data-svn="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+        ${choices.length ? `<div class="quick">${choices.map((c) => `<button type="button" class="qchip" data-svn="${esc(c.name)}" data-svp="${c.price || ''}">${esc(c.name)}</button>`).join('')}</div>` : ''}
         <div class="row2">
           <label class="field"><span>${billing === 'monthly' ? 'Per month' : 'Price'}</span><input id="svAmount" inputmode="decimal" value="${s.amount ? esc(s.amount) : ''}" placeholder="$0"></label>
           <label class="field"><span>${billing === 'monthly' ? 'Started' : 'Date'}</span><input id="svStart" type="date" value="${esc(s.start || dayKey(new Date()))}"></label>
@@ -2545,7 +2698,7 @@
         <div class="field"><span>Status</span><div class="seg" role="group" aria-label="Status">${Object.entries(SVC_STATUS_LABEL)
           .map(([k, l]) => `<button type="button" data-svs="${k}" class="${(s.status || 'planned') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
         <label class="check"><input type="checkbox" id="svPaid"${s.paid ? ' checked' : ''}> Paid</label>`}
-        <label class="field"><span>Notes (optional)</span><textarea id="svNotes" maxlength="500" rows="2" placeholder="What's included, deliverables, terms…">${esc(s.notes || '')}</textarea></label>
+        <label class="field"><span>Notes (optional)</span><textarea id="svNotes" maxlength="500" rows="2" placeholder="What's included, terms…">${esc(s.notes || '')}</textarea></label>
         <p class="err" id="svErr" hidden></p>
         <button class="btn" type="submit" id="svSave">${icon('check')}${editing ? 'Save changes' : 'Save'}</button>
         ${editing ? '<button class="btn ghost danger" type="button" id="svDelete">Delete</button>' : ''}
@@ -2568,24 +2721,40 @@
   }
 
   $('#admPanel').addEventListener('click', async (e) => {
+    if (e.target.closest('[data-svcbook]')) { bookFromServices({ oppId: adm.draft, lockLead: true }); return; }
     const add = e.target.closest('[data-svcadd]');
     if (add) { openServiceEditor({ oppId: adm.draft, billing: add.dataset.svcadd }); return; }
+    const bk = e.target.closest('[data-bk]');
+    if (bk) { const id = bk.dataset.bk; fromAdm(() => openBookingView(id)); return; }
     const row = e.target.closest('[data-svce]');
     if (row) { const s = state.svc.map.get(row.dataset.svce); if (s) openServiceEditor(s); return; }
     const bill = e.target.closest('[data-bill]');
     if (bill) { const cur = readServiceForm(); openServiceEditor({ ...cur, billing: bill.dataset.bill }); return; }
+    const cb = e.target.closest('[data-cbill]');
+    if (cb) { $('#catForm').querySelectorAll('[data-cbill]').forEach((b) => b.classList.toggle('on', b === cb)); return; }
     const sv = e.target.closest('[data-svs]');
     if (sv) { $('#svcForm').querySelectorAll('[data-svs]').forEach((b) => b.classList.toggle('on', b === sv)); return; }
     const qn = e.target.closest('[data-svn]');
-    if (qn) { $('#svName').value = qn.dataset.svn; $('#svAmount').focus(); return; }
+    if (qn) {
+      $('#svName').value = qn.dataset.svn;
+      if (qn.dataset.svp && !numIn($('#svAmount').value)) $('#svAmount').value = qn.dataset.svp;
+      $('#svAmount').focus();
+      return;
+    }
+    if (e.target.closest('#ctDelete')) {
+      const d = adm.draft;
+      if (!d || d.i < 0 || !window.confirm(`Remove ${d.name} from your service list? Past jobs keep their name.`)) return;
+      try { await saveCatalogList(state.svc.catalog.filter((_, k) => k !== d.i), `${d.name} removed`); } catch (ex) { toast(ex.message, true); }
+      return;
+    }
     if (e.target.closest('#svDelete')) {
       const d = adm.draft;
       if (!d || !d.id || !window.confirm(`Delete ${d.service} for ${d.client}?`)) return;
       try {
-        await api('services', { action: 'delete', id: d.id });
+        await api('services', { action: 'delete', pipeline: state.svc.pid, id: d.id });
         state.svc.map.delete(d.id);
         rememberSvc(d.id, null);
-        toast('Service deleted');
+        toast('Deleted');
         afterSvcChange(d.oppId);
       } catch (ex) { toast(ex.message, true); }
     }
@@ -2593,29 +2762,43 @@
 
   $('#admPanel').addEventListener('submit', async (e) => {
     if (e.target.id === 'leadForm') { saveLead(e); return; }
+    if (e.target.id === 'catForm') {
+      e.preventDefault();
+      const d = adm.draft;
+      const name = $('#ctName').value.trim();
+      const item = { name, billing: $('#catForm [data-cbill].on').dataset.cbill, price: numIn($('#ctPrice').value) };
+      const err = $('#ctErr');
+      if (!name) { err.textContent = 'Name the service.'; err.hidden = false; return; }
+      if (state.svc.catalog.some((c, k) => k !== d.i && svcKey(c.name) === svcKey(name))) { err.textContent = 'That service is already on your list.'; err.hidden = false; return; }
+      const items = state.svc.catalog.slice();
+      if (d.i >= 0) items[d.i] = item; else items.push(item);
+      $('#ctSave').disabled = true;
+      try { await saveCatalogList(items, d.i >= 0 ? 'Service saved' : `${name} added to your services`); } catch (ex) { err.textContent = ex.message; err.hidden = false; $('#ctSave').disabled = false; }
+      return;
+    }
     if (e.target.id !== 'svcForm') return;
     e.preventDefault();
     if (adm.busy) return;
     const v = readServiceForm();
     const err = $('#svErr');
     const fail = (m) => { err.textContent = m; err.hidden = false; };
-    if (!v.oppId) return fail('Pick the client.');
+    if (!v.oppId) return fail(`Pick the ${svcCustomerWord()}.`);
     if (!v.service) return fail('Name the service.');
     if (!(v.amount > 0)) return fail('Enter the price.');
     adm.busy = true;
     $('#svSave').disabled = true;
     try {
-      const r = await api('services', { action: 'save', service: v });
+      const r = await api('services', { action: 'save', pipeline: state.svc.pid, service: v });
       state.svc.map.set(r.service.id, r.service);
       rememberSvc(r.service.id, r.service);
-      toast(v.id ? 'Service saved' : `${r.service.service} added for ${r.service.client}`);
+      toast(v.id ? 'Saved' : `${r.service.service} added for ${r.service.client}`);
       afterSvcChange(r.service.oppId);
     } catch (ex) { fail(ex.message); } finally { adm.busy = false; const b = $('#svSave'); if (b) b.disabled = false; }
   });
 
-  // After a save/delete: back to that client's panel, and refresh the page behind it.
+  // After a save/delete: back to that customer's panel, and refresh the page behind it.
   function afterSvcChange(oppId) {
-    if (oppId && state.svc.clients.some((c) => c.id === oppId)) { adm.mode = 'client'; adm.draft = oppId; renderSvcClient(oppId); $('#admPanel').scrollTop = 0; } else closeAdmPanel();
+    if (oppId && findOpp(oppId)) { adm.mode = 'client'; adm.draft = oppId; renderSvcClient(oppId); $('#admPanel').scrollTop = 0; } else closeAdmPanel();
     if (state.view === 'services') renderServices();
   }
 
@@ -2634,7 +2817,7 @@
     $('#tabs').hidden = view === 'clients';
     $('#tabs').querySelectorAll('button').forEach((bt) => bt.classList.toggle('on', bt.dataset.view === view));
     $('#clientsBtn').classList.toggle('on', view === 'clients');
-    $('#pipelinePick').hidden = view === 'clients' || view === 'services' || !(state.me && state.me.admin);
+    $('#pipelinePick').hidden = view === 'clients' || !(state.me && state.me.admin);
     $('#refreshBtn').hidden = view === 'clients';
     if (view === 'home') renderHome();
     if (view === 'calendar') { renderCalendar(); loadBookings(); }

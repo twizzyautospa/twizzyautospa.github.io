@@ -118,15 +118,23 @@ dropdown to work it like any client's board: notes, calls, bookings, quotes and 
   GHL contact (upserted by phone/email) and the lead in the selected pipeline.
 - Sending a quote moves the prospect to **Pitch Sent**; an approved quote moves them to **Active Client**
   and drafts the invoice.
-- **Services tab** (admin only): log what each client buys.
-  - *Monthly retainer* (e.g. Meta ads retainer, CRM portal): counts its amount every month from the start
-    date until the end date, or ongoing if blank.
-  - *One-off job* (e.g. video package, website, ad creatives): counts once, in the month of its date, with a
-    status (Planned / In progress / Delivered) and Paid.
-  - Shows monthly recurring revenue, this month, this year, unpaid jobs, a 12-month stacked chart by service
-    (with a table view), revenue by service, open and delivered jobs, and every client's monthly and
-    all-time totals. Tap a client to add or change their services.
-  - Clients are the leads in LeadThru Sales. Stored in Netlify Blobs at `svc/agency/<id>/<version>`.
+## Services (every account)
+
+Every login has a **Services** tab with its own numbers; the admin sees whichever pipeline is selected
+(LeadThru Sales shows LeadThru's own clients and retainers).
+
+- **Service list**: each account adds the services it sells (name, one-off or monthly, usual price). Stored at
+  `svccat/<pipelineId>/<version>`. LeadThru Sales starts with Meta ads retainer, CRM portal, Video package, Website,
+  Ad creatives and Landing page.
+- **From the calendar**: the booking form has a *Service* picker (chips from the list, or type a new one, which is
+  added to the list). Every booking with a price or a service counts in Services in the month it starts; priced
+  bookings without a service show as *Other jobs*.
+- **Monthly plans / retainers** and past jobs that aren't on the calendar are added by hand. A monthly plan bills on
+  its start date, then monthly while before the end date (Oct 1 → Nov 1 is one month).
+- Shows this month, monthly recurring, this year, booked ahead, a 12-month chart by service (with a table view),
+  revenue by service, jobs coming up and recent, and each customer's totals (tap for their history, book a job or
+  add a plan).
+- Stored at `svc/<pipelineId>/<id>/<version>` (LeadThru Sales keeps `svc/agency/…`).
 
 ## Managing clients (no code, no redeploy)
 

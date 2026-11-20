@@ -24,8 +24,8 @@
  *   POST /api/meta     {id, meta:'yes'|'no'}  mark whether a lead came from Meta (GHL tags "meta lead" / "not meta lead")
  *   GET  /api/ics?t=<signed token>        one appointment as an .ics file (add to phone calendar)
  *   POST /api/lead     {pipeline, name, contactName?, phone?, email?, stageId?, value?}   (admin) add a lead / prospect
- *   GET  /api/services                    (admin) LeadThru's own clients (LeadThru Sales pipeline) + services sold
- *   POST /api/services {action:'save'|'delete', service|id}   (admin) add / change / remove a retainer or job
+ *   GET  /api/services[?pipeline=][&part=catalog]   the pipeline's service list + monthly plans / one-off jobs
+ *   POST /api/services {pipeline?, action:'save'|'delete'|'catalog', service|id|catalog}   add / change / remove them
  *   GET  /api/health
  *
  * Environment variables (set on the Netlify site, never in code):
@@ -725,6 +725,7 @@ async function saveBooking(store, user, body) {
       }
       : { name: slim(o).name, phone: c.phone || '', email: c.email || '' },
     title: String(body.title || '').trim().slice(0, 60) || 'Appointment',
+    service: String(body.service || '').trim().slice(0, 60) || undefined,
     start: start.toISOString(),
     end: new Date(start.getTime() + minutes * 60e3).toISOString(),
     minutes,
@@ -739,6 +740,7 @@ async function saveBooking(store, user, body) {
   await store.setJSON(`bk/${pid}/${month}/${id}`, rec);
   if (!isNew && body.month !== month) await store.delete(`bk/${pid}/${body.month}/${id}`).catch(() => {});
   noteRecentBooking(pid, id, rec);
+  if (rec.service) await addToCatalog(store, pid, rec.service, amount).catch(() => {});
 
   // One GHL update for the stage move and/or the job value.
   let opportunity = null;
@@ -1488,20 +1490,60 @@ async function addLead(user, body) {
 
 const SVC_BILLING = ['monthly', 'once'];
 const SVC_STATUS = ['planned', 'in progress', 'delivered'];
-const svcBase = (id) => `svc/agency/${id}`;
-const agencyPipelineOf = (list) => list.find((p) => /leadthru sales/i.test(p.name)) || null;
+const isAgency = (p) => !!p && /leadthru sales/i.test(p.name);
+const svcDir = (p) => (isAgency(p) ? 'svc/agency' : `svc/${p.id}`);
+const AGENCY_CATALOG = [
+  ['Meta ads retainer', 'monthly'], ['CRM portal', 'monthly'], ['Video package', 'once'],
+  ['Website', 'once'], ['Ad creatives', 'once'], ['Landing page', 'once'],
+].map(([name, billing]) => ({ name, billing, price: 0 }));
 
-async function listServices(store) {
-  const all = await vlatestAll(store, 'svc/agency/');
+function cleanCatalog(list) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : []).slice(0, 60).map((c) => ({
+    name: clip(c && c.name, 60),
+    billing: c && c.billing === 'monthly' ? 'monthly' : 'once',
+    price: Math.max(0, Math.min(1e7, money2(c && c.price))),
+  })).filter((c) => {
+    const k = c.name.toLowerCase();
+    if (!c.name || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+async function serviceCatalog(store, p) {
+  const r = store ? await vlatest(store, `svccat/${p.id}`) : null;
+  if (r && r.doc && Array.isArray(r.doc.items)) return r.doc.items;
+  return isAgency(p) ? AGENCY_CATALOG : [];
+}
+
+async function saveCatalog(store, p, items) {
+  const clean = cleanCatalog(items);
+  await vput(store, `svccat/${p.id}`, { items: clean, updatedAt: new Date().toISOString() });
+  return clean;
+}
+
+// A service typed on a booking that isn't in the list yet gets added (one-off, at that price).
+async function addToCatalog(store, pid, name, price) {
+  const p = (await pipelines()).find((x) => x.id === pid);
+  if (!p || !store) return;
+  const items = await serviceCatalog(store, p);
+  if (items.some((c) => c.name.toLowerCase() === name.toLowerCase())) return;
+  await saveCatalog(store, p, [...items, { name, billing: 'once', price: price || 0 }]);
+}
+
+async function listServices(store, p) {
+  const all = await vlatestAll(store, `${svcDir(p)}/`);
   return [...all.values()].map((r) => r.doc).filter((d) => d && !d.deleted)
     .sort((a, b) => String(b.start).localeCompare(String(a.start)) || String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
-async function saveService(store, user, v) {
+async function saveService(store, user, p, v) {
   const isNew = !v.id;
   if (!isNew && !DOC_ID_RE.test(String(v.id))) throw new HttpError(400, 'Unknown service.');
   const id = isNew ? crypto.randomBytes(6).toString('hex') : v.id;
-  const prevRec = isNew ? null : await vlatest(store, svcBase(id));
+  const base = `${svcDir(p)}/${id}`;
+  const prevRec = isNew ? null : await vlatest(store, base);
   const prev = prevRec ? prevRec.doc : null;
   if (!isNew && (!prev || prev.deleted)) throw new HttpError(404, 'That service no longer exists.');
   const service = clip(v.service, 60);
@@ -1516,10 +1558,11 @@ async function saveService(store, user, v) {
   let client = clip(v.client, 80);
   if (v.oppId) {
     const o = await loadOpportunity(user, v.oppId);
+    if (o.pipelineId !== p.id) throw new HttpError(403, 'That lead is not in this pipeline.');
     oppId = o.id;
     client = slim(o).name || client;
   }
-  if (!client) throw new HttpError(400, 'Pick the client.');
+  if (!client) throw new HttpError(400, 'Pick the customer.');
   const now = new Date().toISOString();
   const doc = {
     id, oppId, client, service, billing, amount, start, end,
@@ -1530,15 +1573,16 @@ async function saveService(store, user, v) {
     createdAt: (prev && prev.createdAt) || now,
     updatedAt: now,
   };
-  await vput(store, svcBase(id), doc);
+  await vput(store, base, doc);
   return doc;
 }
 
-async function deleteService(store, id) {
+async function deleteService(store, p, id) {
   if (!DOC_ID_RE.test(String(id))) throw new HttpError(400, 'Unknown service.');
-  const r = await vlatest(store, svcBase(id));
+  const base = `${svcDir(p)}/${id}`;
+  const r = await vlatest(store, base);
   if (!r || r.doc.deleted) throw new HttpError(404, 'That service no longer exists.');
-  await vput(store, svcBase(id), { ...r.doc, deleted: true, updatedAt: new Date().toISOString() });
+  await vput(store, base, { ...r.doc, deleted: true, updatedAt: new Date().toISOString() });
 }
 
 function reply(status, body, extraHeaders) {
@@ -1859,23 +1903,22 @@ exports.handler = async (event) => {
       return reply(200, { opportunity: await addLead(user, parseBody(event)) });
     }
 
+    // Each account's own services: its service list, monthly plans and one-off jobs (calendar jobs are
+    // read from /api/bookings). Clients only ever reach their own pipeline; the admin picks one.
     if (route === 'services') {
-      if (!user.admin) throw new HttpError(403, 'Only LeadThru can see services.');
       if (method === 'GET') {
-        const agency = agencyPipelineOf(await pipelines());
-        const clients = agency ? (await listOpportunities(agency.id)).map(slim)
-          .map((o) => ({ id: o.id, name: o.name, stageId: o.stageId, status: o.status, contact: o.contact.name })) : [];
-        return reply(200, {
-          agency: agency ? { id: agency.id, name: agency.name, stages: agency.stages } : null,
-          clients,
-          services: store ? await listServices(store) : [],
-        });
+        const p = await bookingPipeline(user, q.pipeline);
+        const catalog = await serviceCatalog(store, p);
+        if (q.part === 'catalog') return reply(200, { pipelineId: p.id, agency: isAgency(p), catalog });
+        return reply(200, { pipelineId: p.id, agency: isAgency(p), catalog, services: store ? await listServices(store, p) : [] });
       }
       if (method === 'POST') {
         if (!store) throw new HttpError(503, 'Storage is not available right now.');
         const body = parseBody(event);
-        if (body.action === 'save') return reply(200, { service: await saveService(store, user, body.service || {}) });
-        if (body.action === 'delete') { await deleteService(store, body.id); return reply(200, { deleted: body.id }); }
+        const p = await bookingPipeline(user, body.pipeline);
+        if (body.action === 'save') return reply(200, { service: await saveService(store, user, p, body.service || {}) });
+        if (body.action === 'delete') { await deleteService(store, p, body.id); return reply(200, { deleted: body.id }); }
+        if (body.action === 'catalog') return reply(200, { catalog: await saveCatalog(store, p, body.catalog) });
         throw new HttpError(400, 'Unknown action.');
       }
     }

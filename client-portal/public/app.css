@@ -719,8 +719,8 @@ html.client-theme .toast svg{color:#fff}
 .sc-legend span{display:inline-flex;align-items:center;gap:6px}
 .sc-legend i{width:10px;height:10px;border-radius:3px}
 .sc-plot{position:relative;height:190px;margin:0 0 0 38px}
-.sc-line{position:absolute;left:0;right:0;border-top:1px solid #1F271D}
-.sc-line:last-child{border-top-color:#2E3A2A}
+.sc-line{position:absolute;left:0;right:0;border-top:1px solid var(--rule)}
+.sc-line:last-child{border-top-color:var(--rule-hi)}
 .sc-line span{position:absolute;right:calc(100% + 6px);top:-7px;font-family:var(--mono);font-size:10px;color:var(--muted-2);white-space:nowrap}
 .sc-cols{position:absolute;inset:0;display:flex;gap:4px}
 .sc-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;background:none;border:0;padding:0;cursor:pointer;color:inherit;border-radius:6px}
@@ -734,7 +734,7 @@ html.client-theme .toast svg{color:#fff}
 .sc-col{position:relative}
 .sc-col.now .sc-x{color:var(--white)}
 .sc{padding-bottom:22px}
-.sc-tip{position:absolute;top:0;z-index:2;min-width:220px;max-width:260px;background:#141b13;border:1px solid var(--rule-hi);border-radius:10px;padding:10px 12px;
+.sc-tip{position:absolute;top:0;z-index:2;min-width:220px;max-width:260px;background:var(--panel);border:1px solid var(--rule-hi);border-radius:10px;padding:10px 12px;
   box-shadow:0 10px 30px rgba(0,0,0,.5);pointer-events:none;display:flex;flex-direction:column;gap:4px;font-size:12.5px}
 @media (max-width:699px){.sc-tip{position:static;margin-top:30px;max-width:none;box-shadow:none;background:var(--panel-2)}}
 .sc-tip .tt{font-family:var(--display);font-size:13px;margin-bottom:2px}
@@ -928,5 +928,14 @@ html.client-theme .tabs{border-color:transparent}
 }
 .lt-foot a{border-radius:999px}
 .client-card .cc-logo{border-radius:12px}
+
+/* services for every account */
+.svc-btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.svc-amt .dim{color:var(--muted-2)}
+.svc-amt .pills{align-items:center}
+.svc-cal{width:13px;height:13px;color:var(--muted-2);margin-right:2px}
+.bk-svc{color:var(--accent-text);font-weight:600}
+.svc-actions + .link-btn{margin-top:10px}
+@media (max-width:600px){.svc-top{flex-direction:column}.svc-btns{justify-content:flex-start}}
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
