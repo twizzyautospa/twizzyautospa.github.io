@@ -2066,10 +2066,10 @@
     box.innerHTML = `
       <div class="home-hello"><h2>${esc(hello)}${name ? `, ${esc(name)}` : ''}</h2><p>${esc(now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))}</p></div>
       <div class="home-kpis">
-        <button type="button" class="kpi" data-go="leads"><span class="l">New leads · 7 days</span><b>${newLeads}</b><span class="s">${metaShare}% from Meta</span></button>
-        <button type="button" class="kpi" data-go="calendar"><span class="l">Jobs this week</span><b>${weekJobs}</b><span class="s">${todays.length} today</span></button>
-        <button type="button" class="kpi" data-go="calendar"><span class="l">Revenue this month</span><b>${esc(shortMoney(monthRev.total))}</b><span class="s">${monthRev.meta ? `${esc(shortMoney(monthRev.meta))} from Meta` : `${monthRev.jobs} priced ${monthRev.jobs === 1 ? 'job' : 'jobs'}`}</span></button>
-        <button type="button" class="kpi" data-go="invoices"><span class="l">Unpaid invoices</span><b>${esc(shortMoney(outstanding))}</b><span class="s">${unpaid.length} open</span></button>
+        <button type="button" class="kpi" data-go="leads"><span class="kpi-go">${icon('arrow')}</span><span class="l">New leads · 7 days</span><b>${newLeads}</b><span class="s">${metaShare}% from Meta</span></button>
+        <button type="button" class="kpi" data-go="calendar"><span class="kpi-go">${icon('arrow')}</span><span class="l">Jobs this week</span><b>${weekJobs}</b><span class="s">${todays.length} today</span></button>
+        <button type="button" class="kpi hero" data-go="calendar"><span class="kpi-go">${icon('arrow')}</span><span class="l">Revenue this month</span><b>${esc(shortMoney(monthRev.total))}</b><span class="s">${monthRev.meta ? `${esc(shortMoney(monthRev.meta))} from Meta` : `${monthRev.jobs} priced ${monthRev.jobs === 1 ? 'job' : 'jobs'}`}</span></button>
+        <button type="button" class="kpi" data-go="invoices"><span class="kpi-go">${icon('arrow')}</span><span class="l">Unpaid invoices</span><b>${esc(shortMoney(outstanding))}</b><span class="s">${unpaid.length} open</span></button>
       </div>
       <div class="wrapup-slot"></div>
       ${attention ? `<div class="home-att">${attention}</div>` : ''}
