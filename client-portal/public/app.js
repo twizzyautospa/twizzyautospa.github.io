@@ -2060,6 +2060,16 @@
   function renderHome() {
     const box = $('#homeView');
     if (!state.board) { box.innerHTML = '<div class="empty">Loading…</div>'; return; }
+    const typing = document.activeElement && document.activeElement.id === 'anInput' ? document.activeElement : null;
+    const sel = typing ? [typing.selectionStart, typing.selectionEnd] : null;
+    renderHomeInner(box);
+    if (isAgencyBoard()) {
+      loadNotes();
+      const t = $('#anInput');
+      if (t && sel) { t.focus(); t.setSelectionRange(sel[0], sel[1]); }
+    }
+  }
+  function renderHomeInner(box) {
     const now = new Date();
     const today = dayKey(now);
     const opps = state.board.opportunities;
@@ -2100,6 +2110,7 @@
       </div>
       <div class="wrapup-slot"></div>
       ${attention ? `<div class="home-att">${attention}</div>` : ''}
+      ${isAgencyBoard() ? `<section class="home-card notes-card" id="homeNotes">${notesCardHtml()}</section>` : ''}
       <div class="home-grid">
         <section class="home-card">
           <div class="hc-head"><h3>Today</h3><button class="btn sm ghost" type="button" data-home="book">${icon('plus')}Book</button></div>
@@ -2119,8 +2130,95 @@
     renderWrapUp();
   }
 
+  /* ---- admin: private notes on Home (LeadThru Sales only) ---- */
+  const isAgencyBoard = () => !!(state.me && state.me.admin && state.board && /leadthru sales/i.test(state.board.pipeline.name));
+  state.anotes = { pid: null, list: [], loaded: false, draft: '', updatedAt: '' };
+  const notesKey = (pid) => `lt_anotes_${pid}`;
+  function notesCardHtml() {
+    const n = state.anotes;
+    const list = n.list.slice().sort((a, b) => (a.done === b.done ? String(b.at).localeCompare(String(a.at)) : a.done ? 1 : -1));
+    const open = list.filter((x) => !x.done).length;
+    return `<div class="hc-head"><h3>Notes</h3><span class="svc-note">${n.loaded ? `${open} open · only you see these` : 'Loading…'}</span></div>
+      <form class="an-form" id="anForm"><textarea id="anInput" rows="2" maxlength="4000" placeholder="Jot something down… (Ctrl / ⌘ + Enter to save)">${esc(n.draft)}</textarea>
+        <button class="btn sm" type="submit">${icon('plus')}Add</button></form>
+      ${list.length ? `<ul class="an-list">${list.map((x) => `<li class="an-item${x.done ? ' done' : ''}">
+        <button type="button" class="an-check" data-an-done="${esc(x.id)}" aria-label="${x.done ? 'Mark not done' : 'Mark done'}">${icon('check')}</button>
+        <div class="an-body"><p>${esc(x.text)}</p><time>${esc(ago(x.at))}</time></div>
+        <button type="button" class="icon-btn small" data-an-del="${esc(x.id)}" aria-label="Delete note">${icon('x')}</button></li>`).join('')}</ul>` : ''}`;
+  }
+  function paintNotes() {
+    const card = $('#homeNotes');
+    if (!card) return;
+    const t = $('#anInput');
+    const focused = t && document.activeElement === t;
+    const sel = focused ? [t.selectionStart, t.selectionEnd] : null;
+    card.innerHTML = notesCardHtml();
+    if (focused) { const u = $('#anInput'); u.focus(); u.setSelectionRange(sel[0], sel[1]); }
+  }
+  async function loadNotes(force) {
+    const pid = state.board.pipeline.id;
+    if (!force && state.anotes.pid === pid && state.anotes.loaded) return;
+    if (state.anotes.pid !== pid) state.anotes = { pid, list: [], loaded: false, draft: '', updatedAt: '' };
+    if (state.anotes.loading) return;
+    state.anotes.loading = true;
+    try {
+      const r = await api(`admin-notes?pipeline=${encodeURIComponent(pid)}`);
+      if (state.anotes.pid !== pid) return;
+      // This browser's last save wins while storage catches up.
+      let local = null;
+      try { local = JSON.parse(localStorage.getItem(notesKey(pid)) || 'null'); } catch { /* private mode */ }
+      const useLocal = local && String(local.updatedAt) > String(r.updatedAt || '');
+      Object.assign(state.anotes, { list: useLocal ? local.notes : r.notes, updatedAt: useLocal ? local.updatedAt : r.updatedAt, loaded: true });
+    } catch (ex) {
+      state.anotes.loaded = true;
+      toast(ex.message, true);
+    } finally { state.anotes.loading = false; }
+    paintNotes();
+  }
+  async function saveNotes(list, msg) {
+    const pid = state.anotes.pid;
+    const before = state.anotes.list;
+    state.anotes.list = list;
+    paintNotes();
+    try {
+      const r = await api('admin-notes', { pipeline: pid, notes: list });
+      if (state.anotes.pid !== pid) return;
+      state.anotes.list = r.notes;
+      state.anotes.updatedAt = r.updatedAt;
+      try { localStorage.setItem(notesKey(pid), JSON.stringify({ notes: r.notes, updatedAt: r.updatedAt })); } catch { /* private mode */ }
+      if (msg) toast(msg);
+      paintNotes();
+    } catch (ex) {
+      state.anotes.list = before;
+      paintNotes();
+      toast(ex.message, true);
+    }
+  }
+  const newNoteId = () => Math.random().toString(36).slice(2, 12).padEnd(8, '0');
+  function addNote() {
+    const t = $('#anInput');
+    const text = (t ? t.value : '').trim();
+    if (!text) return;
+    state.anotes.draft = '';
+    if (t) t.value = '';
+    saveNotes([{ id: newNoteId(), text, at: new Date().toISOString(), done: false }, ...state.anotes.list], 'Note saved');
+  }
+  $('#homeView').addEventListener('submit', (e) => { if (e.target.id === 'anForm') { e.preventDefault(); addNote(); } });
+  $('#homeView').addEventListener('input', (e) => { if (e.target.id === 'anInput') state.anotes.draft = e.target.value; });
+  $('#homeView').addEventListener('keydown', (e) => {
+    if (e.target.id === 'anInput' && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); addNote(); }
+  });
+
   $('#homeView').addEventListener('click', (e) => {
     if (e.target.closest('[data-stop]')) return;
+    const nd = e.target.closest('[data-an-done]');
+    if (nd) { saveNotes(state.anotes.list.map((x) => (x.id === nd.dataset.anDone ? { ...x, done: !x.done } : x))); return; }
+    const nx = e.target.closest('[data-an-del]');
+    if (nx) {
+      const n = state.anotes.list.find((x) => x.id === nx.dataset.anDel);
+      if (n && window.confirm('Delete this note?')) saveNotes(state.anotes.list.filter((x) => x.id !== n.id), 'Note deleted');
+      return;
+    }
     const sched = e.target.closest('[data-sched]');
     if (sched) { openBookingForm({ oppId: sched.dataset.sched, lockLead: true, closing: true }); return; }
     const go = e.target.closest('[data-go]');

@@ -23,6 +23,8 @@
  *   POST /api/remove   {id, reason}         delete a lead from the pipeline (contact kept, tagged "removed by client")
  *   POST /api/meta     {id, meta:'yes'|'no'}  mark whether a lead came from Meta (GHL tags "meta lead" / "not meta lead")
  *   GET  /api/ics?t=<signed token>        one appointment as an .ics file (add to phone calendar)
+ *   GET  /api/admin-notes?pipeline=       (admin, LeadThru Sales only) private notes for the Home page
+ *   POST /api/admin-notes {pipeline, notes}   save the whole notes list
  *   POST /api/lead     {pipeline, name, contactName?, phone?, email?, stageId?, value?}   (admin) add a lead / prospect
  *   GET  /api/services[?pipeline=][&part=catalog]   the pipeline's service list + monthly plans / one-off jobs
  *   POST /api/services {pipeline?, action:'save'|'delete'|'catalog', service|id|catalog}   add / change / remove them
@@ -1585,6 +1587,23 @@ async function deleteService(store, p, id) {
   await vput(store, base, { ...r.doc, deleted: true, updatedAt: new Date().toISOString() });
 }
 
+/* ---- admin: private notes on Home (LeadThru Sales only) ---- */
+const NOTE_ID_RE = /^[a-z0-9]{6,20}$/;
+function cleanNotes(list) {
+  return (Array.isArray(list) ? list : []).slice(0, 300).map((n) => ({
+    id: NOTE_ID_RE.test(String(n && n.id)) ? n.id : crypto.randomBytes(5).toString('hex'),
+    text: clip(n && n.text, 4000),
+    at: ymdOk(String(n && n.at).slice(0, 10)) ? String(n.at).slice(0, 30) : new Date().toISOString(),
+    done: !!(n && n.done),
+  })).filter((n) => n.text);
+}
+async function agencyForNotes(user, wanted) {
+  if (!user.admin) throw new HttpError(403, 'Only LeadThru can see these notes.');
+  const p = await bookingPipeline(user, wanted);
+  if (!isAgency(p)) throw new HttpError(400, 'Notes are only on the LeadThru Sales pipeline.');
+  return p;
+}
+
 function reply(status, body, extraHeaders) {
   return {
     statusCode: status,
@@ -1896,6 +1915,22 @@ exports.handler = async (event) => {
       if (body.action === 'cancel') return reply(200, await cancelBooking(store, user, body));
       if (body.action === 'complete') return reply(200, await completeBooking(store, user, body));
       throw new HttpError(400, 'Unknown action.');
+    }
+
+    if (route === 'admin-notes') {
+      if (method === 'GET') {
+        const p = await agencyForNotes(user, q.pipeline);
+        const r = store ? await vlatest(store, `anotes/${p.id}`) : null;
+        return reply(200, { notes: (r && r.doc.notes) || [], updatedAt: (r && r.doc.updatedAt) || null });
+      }
+      if (method === 'POST') {
+        if (!store) throw new HttpError(503, 'Storage is not available right now.');
+        const body = parseBody(event);
+        const p = await agencyForNotes(user, body.pipeline);
+        const doc = { notes: cleanNotes(body.notes), updatedAt: new Date().toISOString() };
+        await vput(store, `anotes/${p.id}`, doc);
+        return reply(200, doc);
+      }
     }
 
     if (route === 'lead' && method === 'POST') {
