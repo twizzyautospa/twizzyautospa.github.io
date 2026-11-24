@@ -2110,6 +2110,7 @@
       </div>
       <div class="wrapup-slot"></div>
       ${attention ? `<div class="home-att">${attention}</div>` : ''}
+      ${isAgencyBoard() ? `<section class="home-card focus-card" id="homeFocus">${focusCardHtml()}</section>` : ''}
       ${isAgencyBoard() ? `<section class="home-card notes-card" id="homeNotes">${notesCardHtml()}</section>` : ''}
       <div class="home-grid">
         <section class="home-card">
@@ -2132,7 +2133,7 @@
 
   /* ---- admin: private notes on Home (LeadThru Sales only) ---- */
   const isAgencyBoard = () => !!(state.me && state.me.admin && state.board && /leadthru sales/i.test(state.board.pipeline.name));
-  state.anotes = { pid: null, list: [], loaded: false, draft: '', updatedAt: '' };
+  state.anotes = { pid: null, list: [], checks: {}, loaded: false, draft: '', updatedAt: '' };
   const notesKey = (pid) => `lt_anotes_${pid}`;
   function notesCardHtml() {
     const n = state.anotes;
@@ -2158,7 +2159,7 @@
   async function loadNotes(force) {
     const pid = state.board.pipeline.id;
     if (!force && state.anotes.pid === pid && state.anotes.loaded) return;
-    if (state.anotes.pid !== pid) state.anotes = { pid, list: [], loaded: false, draft: '', updatedAt: '' };
+    if (state.anotes.pid !== pid) state.anotes = { pid, list: [], checks: {}, loaded: false, draft: '', updatedAt: '' };
     if (state.anotes.loading) return;
     state.anotes.loading = true;
     try {
@@ -2168,12 +2169,14 @@
       let local = null;
       try { local = JSON.parse(localStorage.getItem(notesKey(pid)) || 'null'); } catch { /* private mode */ }
       const useLocal = local && String(local.updatedAt) > String(r.updatedAt || '');
-      Object.assign(state.anotes, { list: useLocal ? local.notes : r.notes, updatedAt: useLocal ? local.updatedAt : r.updatedAt, loaded: true });
+      const src = useLocal ? local : r;
+      Object.assign(state.anotes, { list: src.notes || [], checks: src.checks || {}, updatedAt: src.updatedAt, loaded: true });
     } catch (ex) {
       state.anotes.loaded = true;
       toast(ex.message, true);
     } finally { state.anotes.loading = false; }
     paintNotes();
+    paintFocus();
   }
   async function saveNotes(list, msg) {
     const pid = state.anotes.pid;
@@ -2185,7 +2188,7 @@
       if (state.anotes.pid !== pid) return;
       state.anotes.list = r.notes;
       state.anotes.updatedAt = r.updatedAt;
-      try { localStorage.setItem(notesKey(pid), JSON.stringify({ notes: r.notes, updatedAt: r.updatedAt })); } catch { /* private mode */ }
+      try { localStorage.setItem(notesKey(pid), JSON.stringify({ notes: r.notes, checks: r.checks, updatedAt: r.updatedAt })); } catch { /* private mode */ }
       if (msg) toast(msg);
       paintNotes();
     } catch (ex) {
@@ -2194,6 +2197,96 @@
       toast(ex.message, true);
     }
   }
+  /* ---- today's focus: a plan for each weekday, with ticks that reset daily ---- */
+  const FOCUS = {
+    1: { title: 'Media buying', tasks: ['Full account reviews', 'Kill / scale', 'New ad sets', 'Client updates', 'Invoicing'] },
+    2: { title: 'Prospecting', tasks: ['Build call lists', 'Research leads', 'Prep outreach scripts and DMs'] },
+    3: { title: 'Film content', tasks: ['Batch 4–6 personal brand videos'] },
+    4: { title: 'Creative building', tasks: ['Client edits / shoots', 'Statics', 'Hooks', 'Scripts', 'Launch new creatives'] },
+    5: { title: 'Deep work', deep: true, tasks: ['Anything else that needs doing'] },
+    6: { title: 'Deep work', deep: true, tasks: ['Anything else that needs doing'] },
+  };
+  const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const WD_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  let focusView = null; // weekday being shown (null = today)
+  const weekDate = (wd) => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + (wd - 1)); return dayKey(d); };
+  const isTicked = (date, id) => (state.anotes.checks[date] || []).includes(id);
+  // Fri / Sat: everything from Mon–Thu (up to today) that isn't ticked yet.
+  function leftovers() {
+    const today = dayKey(new Date());
+    const out = [];
+    for (let wd = 1; wd <= 4; wd++) {
+      const date = weekDate(wd);
+      if (date > today) continue;
+      FOCUS[wd].tasks.forEach((t, i) => { if (!isTicked(date, `${wd}-${i}`)) out.push({ wd, date, id: `${wd}-${i}`, text: t }); });
+    }
+    return out;
+  }
+  function focusItemsFor(wd) {
+    const f = FOCUS[wd];
+    if (!f) return [];
+    const own = f.tasks.map((t, i) => ({ wd, date: weekDate(wd), id: `${wd}-${i}`, text: t }));
+    return f.deep ? [...leftovers().map((x) => ({ ...x, from: WD[x.wd] })), ...own] : own;
+  }
+  function focusCardHtml() {
+    const todayWd = new Date().getDay();
+    const wd = focusView == null ? todayWd : focusView;
+    const f = FOCUS[wd];
+    const items = focusItemsFor(wd);
+    const done = items.filter((x) => isTicked(x.date, x.id)).length;
+    const strip = [1, 2, 3, 4, 5, 6].map((d) => {
+      const own = FOCUS[d].tasks.map((_, i) => `${d}-${i}`);
+      const ticks = own.filter((id) => isTicked(weekDate(d), id)).length;
+      const complete = !FOCUS[d].deep && ticks === own.length;
+      return `<button type="button" class="fw-day${d === wd ? ' on' : ''}${d === todayWd ? ' today' : ''}${complete ? ' complete' : ''}" data-fday="${d}">
+        <b>${WD[d]}</b><span>${esc(FOCUS[d].title)}</span></button>`;
+    }).join('');
+    const body = f ? `
+      <div class="focus-head"><span class="focus-badge">${esc(WD[wd])}</span><div><b>${esc(f.title)}</b>
+        <span>${f.deep ? 'Do whatever hasn\'t been done or needs to be done.' : esc(f.tasks.join(', '))}</span></div></div>
+      <ul class="focus-list">${items.map((x) => {
+        const on = isTicked(x.date, x.id);
+        return `<li class="an-item${on ? ' done' : ''}"><button type="button" class="an-check" data-focus="${esc(x.id)}" data-fdate="${esc(x.date)}" aria-label="${on ? 'Untick' : 'Tick'} ${esc(x.text)}">${icon('check')}</button>
+          <div class="an-body"><p>${x.from ? `<span class="focus-from">${esc(x.from)}</span>` : ''}${esc(x.text)}</p></div></li>`;
+      }).join('')}</ul>
+      ${f.deep && !leftovers().length ? '<p class="focus-clear">Everything from Monday to Thursday is ticked off.</p>' : ''}`
+      : `<div class="focus-head"><span class="focus-badge">Sun</span><div><b>Day off</b><span>No set focus today. Tomorrow: ${esc(FOCUS[1].title)}.</span></div></div>`;
+    return `<div class="hc-head"><h3>${wd === todayWd ? "Today's focus" : `${WD_LONG[wd]}'s focus`}</h3>
+        <span class="svc-note">${items.length ? (done === items.length ? `${icon('check', 'focus-ok')}All done` : `${done} of ${items.length} done`) : ''}</span></div>
+      ${body}
+      <div class="focus-week">${strip}</div>`;
+  }
+  function paintFocus() { const c = $('#homeFocus'); if (c) c.innerHTML = focusCardHtml(); }
+  async function saveChecks(checks) {
+    const pid = state.anotes.pid;
+    const before = state.anotes.checks;
+    state.anotes.checks = checks;
+    paintFocus();
+    try {
+      const r = await api('admin-notes', { pipeline: pid, checks });
+      if (state.anotes.pid !== pid) return;
+      state.anotes.checks = r.checks;
+      state.anotes.updatedAt = r.updatedAt;
+      try { localStorage.setItem(notesKey(pid), JSON.stringify({ notes: r.notes, checks: r.checks, updatedAt: r.updatedAt })); } catch { /* private mode */ }
+      paintFocus();
+    } catch (ex) {
+      state.anotes.checks = before;
+      paintFocus();
+      toast(ex.message, true);
+    }
+  }
+  $('#homeView').addEventListener('click', (e) => {
+    const day = e.target.closest('[data-fday]');
+    if (day) { const d = Number(day.dataset.fday); focusView = d === new Date().getDay() ? null : d; paintFocus(); return; }
+    const t = e.target.closest('[data-focus]');
+    if (t) {
+      const { focus: id, fdate: date } = t.dataset;
+      const cur = state.anotes.checks[date] || [];
+      const next = { ...state.anotes.checks, [date]: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] };
+      saveChecks(next);
+    }
+  });
+
   const newNoteId = () => Math.random().toString(36).slice(2, 12).padEnd(8, '0');
   function addNote() {
     const t = $('#anInput');

@@ -24,7 +24,7 @@
  *   POST /api/meta     {id, meta:'yes'|'no'}  mark whether a lead came from Meta (GHL tags "meta lead" / "not meta lead")
  *   GET  /api/ics?t=<signed token>        one appointment as an .ics file (add to phone calendar)
  *   GET  /api/admin-notes?pipeline=       (admin, LeadThru Sales only) private notes for the Home page
- *   POST /api/admin-notes {pipeline, notes}   save the whole notes list
+ *   POST /api/admin-notes {pipeline, notes?, checks?}   save the notes list and/or the day-plan ticks
  *   POST /api/lead     {pipeline, name, contactName?, phone?, email?, stageId?, value?}   (admin) add a lead / prospect
  *   GET  /api/services[?pipeline=][&part=catalog]   the pipeline's service list + monthly plans / one-off jobs
  *   POST /api/services {pipeline?, action:'save'|'delete'|'catalog', service|id|catalog}   add / change / remove them
@@ -1597,6 +1597,17 @@ function cleanNotes(list) {
     done: !!(n && n.done),
   })).filter((n) => n.text);
 }
+// Day-plan ticks: { 'YYYY-MM-DD': ['1-0', '1-3', ...] }, last 6 weeks kept.
+function cleanChecks(obj) {
+  const out = {};
+  const oldest = ymdPlus(todayYmd(), -42);
+  for (const [day, ids] of Object.entries(obj && typeof obj === 'object' ? obj : {}).slice(0, 120)) {
+    if (!ymdOk(day) || day < oldest || !Array.isArray(ids)) continue;
+    const clean = [...new Set(ids.map((x) => String(x)).filter((x) => /^[0-9a-z-]{1,24}$/.test(x)))].slice(0, 40);
+    if (clean.length) out[day] = clean;
+  }
+  return out;
+}
 async function agencyForNotes(user, wanted) {
   if (!user.admin) throw new HttpError(403, 'Only LeadThru can see these notes.');
   const p = await bookingPipeline(user, wanted);
@@ -1921,13 +1932,18 @@ exports.handler = async (event) => {
       if (method === 'GET') {
         const p = await agencyForNotes(user, q.pipeline);
         const r = store ? await vlatest(store, `anotes/${p.id}`) : null;
-        return reply(200, { notes: (r && r.doc.notes) || [], updatedAt: (r && r.doc.updatedAt) || null });
+        return reply(200, { notes: (r && r.doc.notes) || [], checks: (r && r.doc.checks) || {}, updatedAt: (r && r.doc.updatedAt) || null });
       }
       if (method === 'POST') {
         if (!store) throw new HttpError(503, 'Storage is not available right now.');
         const body = parseBody(event);
         const p = await agencyForNotes(user, body.pipeline);
-        const doc = { notes: cleanNotes(body.notes), updatedAt: new Date().toISOString() };
+        const prev = await vlatest(store, `anotes/${p.id}`);
+        const doc = {
+          notes: body.notes !== undefined ? cleanNotes(body.notes) : ((prev && prev.doc.notes) || []),
+          checks: body.checks !== undefined ? cleanChecks(body.checks) : ((prev && prev.doc.checks) || {}),
+          updatedAt: new Date().toISOString(),
+        };
         await vput(store, `anotes/${p.id}`, doc);
         return reply(200, doc);
       }
