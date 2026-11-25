@@ -24,8 +24,8 @@ Nucleus's brain lives in Shayan's private Notion workspace, not in this repo
    - "check <client>" → 4.1 for that one account
    - new creative needed → a Creative Request for Forge (manual section 7.6);
      Forge's own requests go through the `forge` skill
-   - "Architect" / "new client" → Architect is parked; only if Shayan asks, fetch
-     **Architect — Blueprint** (Notion page `418f240dded5810bbc0ed9631a632027`)
+   - "Architect" / "new client" / "build <client>" → Architect's job: use the
+     `architect` skill (or message the Architect session)
 3. A direct instruction from Shayan in chat counts as approval. Log it in
    Actions & Approvals with Source = Shayan.
 4. Never write ad data, client numbers or account IDs into this repository.
